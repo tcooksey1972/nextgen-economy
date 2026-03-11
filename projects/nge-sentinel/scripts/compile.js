@@ -118,6 +118,7 @@ for (const [sourceName, contracts] of Object.entries(output.contracts || {})) {
       outFile,
       JSON.stringify(
         {
+          _format: "hh-sol-artifact-1",
           contractName,
           sourceName,
           abi: artifact.abi,
@@ -127,6 +128,8 @@ for (const [sourceName, contracts] of Object.entries(output.contracts || {})) {
           deployedBytecode: artifact.evm?.deployedBytecode?.object
             ? `0x${artifact.evm.deployedBytecode.object}`
             : "0x",
+          linkReferences: artifact.evm?.bytecode?.linkReferences || {},
+          deployedLinkReferences: artifact.evm?.deployedBytecode?.linkReferences || {},
         },
         null,
         2
