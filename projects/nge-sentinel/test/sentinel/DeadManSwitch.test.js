@@ -1,10 +1,25 @@
+/**
+ * @file DeadManSwitch.test.js
+ * @description Hardhat test suite for the DeadManSwitch abstract contract,
+ * exercised through the SentinelVault example contract.
+ *
+ * Covers: deployment validation, heartbeat check-in, time tracking,
+ * switch activation, recovery address management, owner configuration,
+ * vault deposit/withdraw, and a full end-to-end lifecycle scenario.
+ *
+ * Requires: `npx hardhat test` (needs internet for solc download).
+ * For offline testing, use scripts/test.js instead.
+ */
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("DeadManSwitch", function () {
-  const HEARTBEAT = 30 * 24 * 60 * 60; // 30 days
-  const GRACE = 7 * 24 * 60 * 60; // 7 days
+  // Default test parameters: 30-day heartbeat with 7-day grace period.
+  // These mirror realistic production values while remaining testable
+  // with Hardhat's time manipulation helpers.
+  const HEARTBEAT = 30 * 24 * 60 * 60; // 30 days in seconds
+  const GRACE = 7 * 24 * 60 * 60; // 7 days in seconds
 
   let vault;
   let owner, recovery, attacker, newRecovery;

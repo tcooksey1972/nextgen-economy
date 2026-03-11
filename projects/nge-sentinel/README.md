@@ -2,6 +2,52 @@
 
 A library of composable, reusable security modules for Solidity smart contracts. Built on OpenZeppelin v5.x.
 
+## Getting Started
+
+### Prerequisites
+- Node.js >= 18.x
+- npm >= 9.x
+
+### Installation
+```bash
+cd projects/nge-sentinel
+npm install
+```
+
+### Compile Contracts
+```bash
+# Standard Hardhat compilation (requires internet to download solc)
+npm run compile
+
+# Offline compilation using bundled solcjs (no internet required)
+npm run compile:local
+```
+
+### Run Tests
+```bash
+# Standard Hardhat tests (requires internet for solc download)
+npm test
+
+# Standalone tests using pre-compiled artifacts + local node:
+# Terminal 1 — start a local Hardhat node:
+npm run node
+
+# Terminal 2 — compile and run tests:
+npm run compile:local
+npm run test:local
+```
+
+### Project Status
+
+| Module | Status | Tests |
+|--------|--------|-------|
+| DeadManSwitch | Implemented | 23 passing |
+| RateLimiter | Planned (Phase 2) | — |
+| BreakGlass | Planned (Phase 3) | — |
+| WatchdogAlert | Planned (Phase 4) | — |
+
+---
+
 ## Why This Exists
 
 OpenZeppelin gives you building blocks (`Pausable`, `ReentrancyGuard`, `AccessControl`). NGE Sentinel gives you **opinionated security patterns** — higher-level modules that solve real operational problems smart contract teams face after deployment.
@@ -170,7 +216,7 @@ scripts/
 
 ## Roadmap
 
-- [ ] Phase 1: DeadManSwitch — core heartbeat + auto-pause + recovery
+- [x] Phase 1: DeadManSwitch — core heartbeat + auto-pause + recovery
 - [ ] Phase 2: RateLimiter — sliding window rate limiting
 - [ ] Phase 3: BreakGlass — multi-sig emergency actions
 - [ ] Phase 4: WatchdogAlert — on-chain anomaly events
@@ -179,9 +225,9 @@ scripts/
 
 ## Dependencies
 
-- Solidity ^0.8.20
+- Solidity ^0.8.26
 - OpenZeppelin Contracts v5.x
-- Hardhat development framework
+- Hardhat 2.x development framework
 - ethers.js v6
 
 ## License

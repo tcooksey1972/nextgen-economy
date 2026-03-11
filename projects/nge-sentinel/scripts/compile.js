@@ -1,8 +1,17 @@
 /**
- * Standalone compile script using the bundled solcjs.
- * Bypasses Hardhat's compiler download when network is unavailable.
+ * @file compile.js
+ * @description Standalone Solidity compiler using the solcjs bundled with Hardhat.
  *
- * Usage: node scripts/compile.js
+ * Why this exists: Hardhat normally downloads a native solc binary at compile
+ * time. In network-restricted environments (CI, air-gapped machines), this
+ * download fails. This script uses the solcjs already installed as a Hardhat
+ * dependency, so no internet is required.
+ *
+ * Outputs JSON artifacts (ABI + bytecode) to artifacts/ for use by test.js
+ * and deployment scripts.
+ *
+ * @usage node scripts/compile.js
+ * @see scripts/test.js — consumes the artifacts produced here
  */
 const solc = require("solc");
 const fs = require("fs");
@@ -12,13 +21,19 @@ const CONTRACTS_DIR = path.join(__dirname, "..", "contracts");
 const ARTIFACTS_DIR = path.join(__dirname, "..", "artifacts");
 const NODE_MODULES = path.join(__dirname, "..", "node_modules");
 
+/**
+ * Resolves Solidity import paths for the solcjs compiler.
+ * Checks node_modules first (for @openzeppelin/* imports), then falls
+ * back to the local contracts directory (for relative imports).
+ *
+ * @param {string} importPath - The import path from the Solidity source
+ * @returns {{ contents: string } | { error: string }} File contents or error
+ */
 function findImport(importPath) {
-  // Try node_modules first (for @openzeppelin imports)
   const nmPath = path.join(NODE_MODULES, importPath);
   if (fs.existsSync(nmPath)) {
     return { contents: fs.readFileSync(nmPath, "utf8") };
   }
-  // Try relative to contracts dir
   const localPath = path.join(CONTRACTS_DIR, importPath);
   if (fs.existsSync(localPath)) {
     return { contents: fs.readFileSync(localPath, "utf8") };
@@ -26,6 +41,13 @@ function findImport(importPath) {
   return { error: `File not found: ${importPath}` };
 }
 
+/**
+ * Recursively collects all .sol files under a directory.
+ *
+ * @param {string} dir - Root directory to scan
+ * @param {string[]} [files=[]] - Accumulator (used in recursion)
+ * @returns {string[]} Array of absolute file paths
+ */
 function collectSolFiles(dir, files = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir.toString(), entry.name);

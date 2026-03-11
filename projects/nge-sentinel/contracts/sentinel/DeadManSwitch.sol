@@ -35,12 +35,34 @@ abstract contract DeadManSwitch is IDeadManSwitch, Ownable2Step, Pausable {
     //  Storage
     // ──────────────────────────────────────────────
 
+    /// @dev Required time (in seconds) between owner check-ins. If the owner
+    ///      does not call `checkIn()` within this interval, the grace period
+    ///      begins. Configurable via `setHeartbeatInterval()`.
     uint256 private _heartbeatInterval;
+
+    /// @dev Additional buffer (in seconds) after a missed heartbeat before the
+    ///      switch can be activated. Prevents accidental activation due to
+    ///      brief owner unavailability. Configurable via `setGracePeriod()`.
     uint256 private _gracePeriod;
+
+    /// @dev Timestamp of the owner's most recent `checkIn()` call. Initialized
+    ///      to `block.timestamp` at deployment. The switch deadline is computed
+    ///      as: `_lastCheckIn + _heartbeatInterval + _gracePeriod`.
     uint256 private _lastCheckIn;
+
+    /// @dev Set to true once `activateSwitch()` executes. Irreversible — once
+    ///      activated, the switch cannot be deactivated or re-triggered.
     bool private _switchActivated;
 
+    /// @dev Address that receives ownership when the switch activates. Set at
+    ///      deployment and changeable via the 2-step propose/accept pattern
+    ///      (`proposeRecoveryAddress` + `acceptRecoveryAddress`).
     address private _recoveryAddress;
+
+    /// @dev Staging address for recovery changes. Set by `proposeRecoveryAddress()`,
+    ///      cleared when the proposed address calls `acceptRecoveryAddress()`.
+    ///      This 2-step pattern mirrors Ownable2Step and prevents accidental
+    ///      transfers to wrong addresses.
     address private _pendingRecoveryAddress;
 
     // ──────────────────────────────────────────────
@@ -72,6 +94,9 @@ abstract contract DeadManSwitch is IDeadManSwitch, Ownable2Step, Pausable {
     //  Modifiers
     // ──────────────────────────────────────────────
 
+    /// @dev Guards functions that must not be called after the switch has fired.
+    ///      Applied to `checkIn()`, `setHeartbeatInterval()`, `setGracePeriod()`,
+    ///      and `activateSwitch()` itself (prevents double-activation).
     modifier switchNotActivated() {
         if (_switchActivated) revert SwitchAlreadyActivated();
         _;
@@ -93,6 +118,8 @@ abstract contract DeadManSwitch is IDeadManSwitch, Ownable2Step, Pausable {
         return _lastCheckIn;
     }
 
+    /// @dev Public (not external) so child contracts and `activateSwitch()` can
+    ///      call it internally without an external call overhead.
     function switchDeadline() public view returns (uint256) {
         return _lastCheckIn + _heartbeatInterval + _gracePeriod;
     }

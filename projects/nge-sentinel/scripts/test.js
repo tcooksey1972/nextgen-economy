@@ -1,19 +1,44 @@
 /**
- * Standalone test runner for DeadManSwitch + SentinelVault.
- * Uses pre-compiled artifacts against a running Hardhat node.
+ * @file test.js
+ * @description Standalone test runner for the DeadManSwitch + SentinelVault contracts.
  *
- * Usage: node scripts/test.js
+ * Why this exists: When Hardhat can't download the native solc compiler
+ * (network-restricted environments), `npx hardhat test` won't work. This
+ * script reads pre-compiled artifacts from compile.js and runs tests against
+ * a local JSON-RPC node (Hardhat or Anvil).
+ *
+ * Prerequisites:
+ *   1. Compile first:  node scripts/compile.js
+ *   2. Start a node:   npx hardhat node  (in a separate terminal)
+ *   3. Run tests:      node scripts/test.js
+ *
+ * @usage node scripts/test.js
+ * @see scripts/compile.js — produces the artifacts consumed here
  */
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
 
+/**
+ * Lightweight assertion helper. Throws on failure with a descriptive message.
+ * Used instead of Chai since this runner is independent of Hardhat's test framework.
+ *
+ * @param {boolean} condition - Condition to assert
+ * @param {string} msg - Error message if assertion fails
+ */
 const assert = (condition, msg) => {
   if (!condition) throw new Error(`ASSERTION FAILED: ${msg}`);
 };
 
 const ARTIFACTS_DIR = path.join(__dirname, "..", "artifacts");
 
+/**
+ * Loads a compiled contract artifact (ABI + bytecode) from the artifacts directory.
+ *
+ * @param {string} sourcePath - Relative path to the source file (e.g., "examples/SentinelVault.sol")
+ * @param {string} contractName - Contract name (e.g., "SentinelVault")
+ * @returns {{ abi: object[], bytecode: string, contractName: string }} Artifact object
+ */
 function loadArtifact(sourcePath, contractName) {
   const file = path.join(ARTIFACTS_DIR, sourcePath, `${contractName}.json`);
   return JSON.parse(fs.readFileSync(file, "utf8"));
@@ -37,6 +62,11 @@ async function main() {
   let passed = 0;
   let failed = 0;
 
+  /**
+   * Runs a single named test. Catches errors and tracks pass/fail counts.
+   * @param {string} name - Test description
+   * @param {Function} fn - Async test function
+   */
   async function test(name, fn) {
     try {
       await fn();
@@ -49,6 +79,14 @@ async function main() {
     }
   }
 
+  /**
+   * Deploys a fresh SentinelVault instance. Each test gets its own vault
+   * for isolation (no shared state between tests).
+   * @param {number} [hb=HEARTBEAT] - Heartbeat interval in seconds
+   * @param {number} [gp=GRACE] - Grace period in seconds
+   * @param {string} [rec=recovery.address] - Recovery address
+   * @returns {Promise<ethers.Contract>} Deployed SentinelVault contract
+   */
   async function deploy(hb = HEARTBEAT, gp = GRACE, rec = recovery.address) {
     const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, owner);
     const vault = await factory.deploy(hb, gp, rec);
@@ -56,6 +94,11 @@ async function main() {
     return vault;
   }
 
+  /**
+   * Advances the blockchain time by the given number of seconds and mines
+   * a new block. Used to simulate the passage of time for heartbeat tests.
+   * @param {number} seconds - Number of seconds to advance
+   */
   async function increaseTime(seconds) {
     await provider.send("evm_increaseTime", [seconds]);
     await provider.send("evm_mine", []);
