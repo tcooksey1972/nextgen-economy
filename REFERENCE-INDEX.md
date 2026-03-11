@@ -50,6 +50,23 @@ This document maps NextGen-Economy development topics to their source material i
 | Web3.js examples | `code/web3js/` | Contract interaction (sync + async patterns) |
 | JSON-RPC examples | `code/jsonrpc/` | HTTP, WebSocket, IPC client examples |
 
+## OpenZeppelin Contracts Modules (v5.x)
+
+| Module | Key Contracts | Purpose |
+|--------|--------------|---------|
+| `access/` | Ownable, Ownable2Step, AccessControl, AccessManager | Permission management |
+| `token/ERC20/` | ERC20, ERC20Burnable, ERC20Pausable, ERC20Permit, ERC20Votes, ERC20Capped, ERC20FlashMint | Fungible tokens |
+| `token/ERC20/utils/` | SafeERC20 | Safe external token interactions |
+| `token/ERC721/` | ERC721, ERC721Enumerable, ERC721URIStorage, ERC721Burnable, ERC721Royalty, ERC721Votes | NFTs |
+| `token/ERC1155/` | ERC1155, ERC1155Supply, ERC1155Burnable, ERC1155Pausable | Multi-token standard |
+| `governance/` | Governor, GovernorCountingSimple, GovernorVotes, GovernorTimelockControl, TimelockController | On-chain DAO governance |
+| `proxy/` | ERC1967Proxy, TransparentUpgradeableProxy, BeaconProxy, UUPSUpgradeable | Upgradeable contracts |
+| `utils/` | ReentrancyGuard, Pausable, Address, Math | Security & math utilities |
+| `utils/cryptography/` | MerkleProof, EIP712, SignatureChecker, MessageHashUtils, ECDSA | Cryptographic operations |
+| `utils/structs/` | EnumerableSet, EnumerableMap, BitMaps, Checkpoints | Gas-efficient data structures |
+| `metatx/` | ERC2771Context, ERC2771Forwarder | Gasless meta-transactions |
+| `interfaces/` | IERC20, IERC721, IERC1155, IERC2981, IERC3156 | Standard interfaces |
+
 ## Standards & Tools
 
 | Topic | Source File | Key Content |
