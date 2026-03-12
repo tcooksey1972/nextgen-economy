@@ -1,4 +1,4 @@
-# NextGen-Economy - Claude Code Context
+# NextGen-Economy 
 
 ## Project Overview
 
