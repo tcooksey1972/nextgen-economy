@@ -1,0 +1,288 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  NGE Sentinel Monitor — Serverless monitoring backend for NGE Sentinel
+  smart contracts. Polls on-chain events, stores in DynamoDB, sends alerts
+  via SNS, and serves a REST API for the dashboard.
+
+# ─────────────────────────────────────────────────────────
+#  Parameters — configure at deploy time
+# ─────────────────────────────────────────────────────────
+
+Parameters:
+  EthRpcUrl:
+    Type: String
+    Description: >
+      Ethereum JSON-RPC endpoint (e.g., Alchemy or Infura Sepolia URL).
+      Free tier: https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+    NoEcho: true
+
+  ContractAddress:
+    Type: String
+    Description: Deployed FullSentinelVault contract address on Sepolia.
+    AllowedPattern: "^0x[0-9a-fA-F]{40}$"
+
+  AlertEmail:
+    Type: String
+    Description: Email address for SNS alert notifications.
+    AllowedPattern: "^[^@]+@[^@]+\\.[^@]+$"
+
+  ChainId:
+    Type: Number
+    Default: 11155111
+    Description: Ethereum chain ID (11155111 = Sepolia).
+
+  PollBlockRange:
+    Type: Number
+    Default: 100
+    Description: Number of blocks to look back on first poll.
+
+  HeartbeatWarningHours:
+    Type: Number
+    Default: 48
+    Description: Hours before deadline to send heartbeat warning.
+
+# ─────────────────────────────────────────────────────────
+#  Global settings for all Lambda functions
+# ─────────────────────────────────────────────────────────
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ETH_RPC_URL: !Ref EthRpcUrl
+        CONTRACT_ADDRESS: !Ref ContractAddress
+        CHAIN_ID: !Ref ChainId
+        EVENTS_TABLE: !Ref EventsTable
+        STATE_TABLE: !Ref StateTable
+        ALERT_TOPIC_ARN: !Ref AlertTopic
+        POLL_BLOCK_RANGE: !Ref PollBlockRange
+        HEARTBEAT_WARNING_HOURS: !Ref HeartbeatWarningHours
+
+Resources:
+
+  # ─────────────────────────────────────────────────────────
+  #  DynamoDB Tables
+  # ─────────────────────────────────────────────────────────
+
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SentinelEvents
+      BillingMode: PAY_PER_REQUEST  # Free tier: 25 RCU/WCU
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SentinelState
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  # ─────────────────────────────────────────────────────────
+  #  SNS Topic for Alerts
+  # ─────────────────────────────────────────────────────────
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: SentinelAlerts
+      DisplayName: NGE Sentinel Alerts
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ─────────────────────────────────────────────────────────
+  #  Lambda Functions
+  # ─────────────────────────────────────────────────────────
+
+  EventPollerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: sentinel-event-poller
+      Description: Polls blockchain for new Sentinel contract events (every 1 min).
+      Handler: src/lambdas/eventPoller.handler
+      CodeUri: .
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StateTable
+        - SNSPublishMessagePolicy:
+            TopicArn: !Ref AlertTopic
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Description: Poll for new contract events every minute
+            Enabled: true
+
+  HeartbeatMonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: sentinel-heartbeat-monitor
+      Description: Monitors DeadManSwitch heartbeat status (every 1 hour).
+      Handler: src/lambdas/heartbeatMonitor.handler
+      CodeUri: .
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StateTable
+        - SNSPublishMessagePolicy:
+            TopicArn: !Ref AlertTopic
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+            Description: Check heartbeat status every hour
+            Enabled: true
+
+  ApiHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: sentinel-api-handler
+      Description: REST API for the Sentinel monitoring dashboard.
+      Handler: src/lambdas/apiHandler.handler
+      CodeUri: .
+      Timeout: 10
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref StateTable
+      Events:
+        GetStatus:
+          Type: Api
+          Properties:
+            Path: /status
+            Method: GET
+            RestApiId: !Ref SentinelApi
+        GetEvents:
+          Type: Api
+          Properties:
+            Path: /events
+            Method: GET
+            RestApiId: !Ref SentinelApi
+        GetProposals:
+          Type: Api
+          Properties:
+            Path: /proposals
+            Method: GET
+            RestApiId: !Ref SentinelApi
+        GetHealth:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: GET
+            RestApiId: !Ref SentinelApi
+        Options:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: OPTIONS
+            RestApiId: !Ref SentinelApi
+
+  # ─────────────────────────────────────────────────────────
+  #  API Gateway
+  # ─────────────────────────────────────────────────────────
+
+  SentinelApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: SentinelMonitorAPI
+      StageName: prod
+      Description: REST API for the NGE Sentinel monitoring dashboard.
+      Cors:
+        AllowMethods: "'GET,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
+  # ─────────────────────────────────────────────────────────
+  #  S3 Bucket for Dashboard Frontend
+  # ─────────────────────────────────────────────────────────
+
+  DashboardBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "sentinel-dashboard-${AWS::AccountId}"
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  DashboardBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DashboardBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicRead
+            Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${DashboardBucket.Arn}/*"
+
+# ─────────────────────────────────────────────────────────
+#  Outputs
+# ─────────────────────────────────────────────────────────
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${SentinelApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+
+  DashboardUrl:
+    Description: S3 static website URL for the dashboard
+    Value: !GetAtt DashboardBucket.WebsiteURL
+
+  DashboardBucketName:
+    Description: S3 bucket name for deploying frontend files
+    Value: !Ref DashboardBucket
+
+  AlertTopicArn:
+    Description: SNS Topic ARN for alert subscriptions
+    Value: !Ref AlertTopic
+
+  EventsTableName:
+    Description: DynamoDB table for contract events
+    Value: !Ref EventsTable
+
+  StateTableName:
+    Description: DynamoDB table for contract state
+    Value: !Ref StateTable
