@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NGE Sentinel Monitor</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>NGE Sentinel Monitor</h1>
+    <div id="health-badge" class="badge">Loading...</div>
+  </header>
+
+  <main>
+    <!-- Vault Overview -->
+    <section class="card" id="vault-section">
+      <h2>Vault Status</h2>
+      <div class="grid">
+        <div class="stat">
+          <label>Balance</label>
+          <span id="vault-balance">—</span>
+        </div>
+        <div class="stat">
+          <label>Owner</label>
+          <span id="vault-owner" class="mono">—</span>
+        </div>
+        <div class="stat">
+          <label>Paused</label>
+          <span id="vault-paused">—</span>
+        </div>
+        <div class="stat">
+          <label>Block</label>
+          <span id="vault-block">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dead Man Switch -->
+    <section class="card" id="dms-section">
+      <h2>Dead Man Switch</h2>
+      <div class="grid">
+        <div class="stat wide">
+          <label>Time Remaining</label>
+          <span id="dms-remaining" class="big">—</span>
+        </div>
+        <div class="stat">
+          <label>Last Check-In</label>
+          <span id="dms-checkin">—</span>
+        </div>
+        <div class="stat">
+          <label>Deadline</label>
+          <span id="dms-deadline">—</span>
+        </div>
+        <div class="stat">
+          <label>Switch Activated</label>
+          <span id="dms-activated">—</span>
+        </div>
+        <div class="stat">
+          <label>Recovery Address</label>
+          <span id="dms-recovery" class="mono">—</span>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div id="dms-progress" class="progress-fill"></div>
+      </div>
+    </section>
+
+    <!-- Rate Limiter -->
+    <section class="card" id="rl-section">
+      <h2>Rate Limiter</h2>
+      <div class="grid">
+        <div class="stat">
+          <label>Current Usage</label>
+          <span id="rl-usage">—</span>
+        </div>
+        <div class="stat">
+          <label>Max per Window</label>
+          <span id="rl-max">—</span>
+        </div>
+        <div class="stat">
+          <label>Remaining</label>
+          <span id="rl-remaining">—</span>
+        </div>
+        <div class="stat">
+          <label>Window Duration</label>
+          <span id="rl-window">—</span>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div id="rl-progress" class="progress-fill"></div>
+      </div>
+    </section>
+
+    <!-- Break Glass -->
+    <section class="card" id="bg-section">
+      <h2>Break Glass</h2>
+      <div class="grid">
+        <div class="stat">
+          <label>Guardians</label>
+          <span id="bg-guardians">—</span>
+        </div>
+        <div class="stat">
+          <label>Threshold</label>
+          <span id="bg-threshold">—</span>
+        </div>
+        <div class="stat">
+          <label>Execution Delay</label>
+          <span id="bg-delay">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Watchdog -->
+    <section class="card" id="wd-section">
+      <h2>Watchdog Alert Config</h2>
+      <div class="grid">
+        <div class="stat">
+          <label>Large Transfer Threshold</label>
+          <span id="wd-large">—</span>
+        </div>
+        <div class="stat">
+          <label>Rapid Activity Count</label>
+          <span id="wd-rapid-count">—</span>
+        </div>
+        <div class="stat">
+          <label>Rapid Activity Window</label>
+          <span id="wd-rapid-window">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent Events -->
+    <section class="card" id="events-section">
+      <h2>Recent Events</h2>
+      <div class="event-filters">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="WatchdogAlerted">Watchdog</button>
+        <button class="filter-btn" data-filter="OutflowRecorded">Outflow</button>
+        <button class="filter-btn" data-filter="HeartbeatReceived">Heartbeat</button>
+        <button class="filter-btn" data-filter="EmergencyProposed">Emergency</button>
+      </div>
+      <div id="events-list" class="events-list">
+        <p class="muted">Loading events...</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>NGE Sentinel Monitor &mdash; Cloud Creations LLC</p>
+    <p class="muted">Last updated: <span id="last-update">—</span></p>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

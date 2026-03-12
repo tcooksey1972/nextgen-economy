@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# SAM build artifacts
+.aws-sam/
+
+# Generated frontend config (contains deploy-specific URL)
+frontend/js/config.js
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db

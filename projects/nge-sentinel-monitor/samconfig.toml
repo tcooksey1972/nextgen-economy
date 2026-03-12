@@ -1,0 +1,16 @@
+# SAM CLI configuration file.
+# Run `sam deploy --guided` the first time to populate your values.
+# Subsequent deploys can use `sam deploy` (reads from this file).
+#
+# This file is checked into git with placeholder values.
+# Fill in your actual values after first guided deploy.
+
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "nge-sentinel-monitor"
+resolve_s3 = true
+s3_prefix = "nge-sentinel-monitor"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
