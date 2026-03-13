@@ -1,0 +1,418 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  NGE IoT Blockchain Bridge — Connects AWS IoT Core services (Industrial,
+  Consumer, Commercial, Automotive) to on-chain DeviceRegistry and DataAnchor
+  smart contracts. Supports device provisioning, sensor data anchoring, and
+  tamper-proof verification via API Gateway.
+
+# ──────────────────────────────────────────────
+#  Parameters
+# ──────────────────────────────────────────────
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment
+
+  EthRpcUrl:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /nge/iot/eth-rpc-url
+    Description: Ethereum JSON-RPC endpoint (Infura/Alchemy)
+
+  ContractAddress:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /nge/iot/contract-address
+    Description: AnchoredDeviceRegistry contract address
+
+  SignerSecretArn:
+    Type: String
+    Description: ARN of Secrets Manager secret containing the signer private key
+
+  NotificationEmail:
+    Type: String
+    Description: Email for error notifications
+
+# ──────────────────────────────────────────────
+#  Resources
+# ──────────────────────────────────────────────
+
+Resources:
+
+  # ─── DynamoDB Tables ───
+
+  DeviceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub nge-iot-devices-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: thingName
+          AttributeType: S
+        - AttributeName: deviceId
+          AttributeType: N
+      KeySchema:
+        - AttributeName: thingName
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: deviceId-index
+          KeySchema:
+            - AttributeName: deviceId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  AnchorsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub nge-iot-anchors-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: dataHash
+          AttributeType: S
+        - AttributeName: deviceId
+          AttributeType: N
+      KeySchema:
+        - AttributeName: dataHash
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: deviceId-index
+          KeySchema:
+            - AttributeName: deviceId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ─── SQS Dead Letter Queue ───
+
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub nge-iot-dlq-${Environment}
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # ─── SNS Error Notifications ───
+
+  ErrorTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub nge-iot-errors-${Environment}
+
+  ErrorSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref ErrorTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  # ─── IAM Roles ───
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub nge-iot-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt DeviceTable.Arn
+                  - !Sub ${DeviceTable.Arn}/index/*
+                  - !GetAtt AnchorsTable.Arn
+                  - !Sub ${AnchorsTable.Arn}/index/*
+        - PolicyName: SecretsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref SignerSecretArn
+
+  IoTRuleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub nge-iot-rule-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaInvoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt RegisterDeviceLambda.Arn
+                  - !GetAtt AnchorDataLambda.Arn
+        - PolicyName: ErrorActions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                  - sqs:SendMessage
+                Resource:
+                  - !Ref ErrorTopic
+                  - !GetAtt DeadLetterQueue.Arn
+
+  # ─── Lambda Functions ───
+
+  RegisterDeviceLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub nge-iot-register-device-${Environment}
+      Runtime: nodejs18.x
+      Handler: registerDevice.handler
+      Code:
+        S3Bucket: !Sub nge-iot-lambda-${Environment}
+        S3Key: lambda/registerDevice.zip
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          ETH_RPC_URL: !Ref EthRpcUrl
+          CONTRACT_ADDRESS: !Ref ContractAddress
+          SIGNER_PRIVATE_KEY: '{{resolve:secretsmanager:nge-iot-signer:SecretString:privateKey}}'
+          DYNAMODB_TABLE: !Ref DeviceTable
+
+  AnchorDataLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub nge-iot-anchor-data-${Environment}
+      Runtime: nodejs18.x
+      Handler: anchorData.handler
+      Code:
+        S3Bucket: !Sub nge-iot-lambda-${Environment}
+        S3Key: lambda/anchorData.zip
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          ETH_RPC_URL: !Ref EthRpcUrl
+          CONTRACT_ADDRESS: !Ref ContractAddress
+          SIGNER_PRIVATE_KEY: '{{resolve:secretsmanager:nge-iot-signer:SecretString:privateKey}}'
+          DYNAMODB_TABLE: !Ref DeviceTable
+          ANCHORS_TABLE: !Ref AnchorsTable
+
+  VerifyAnchorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub nge-iot-verify-anchor-${Environment}
+      Runtime: nodejs18.x
+      Handler: verifyAnchor.handler
+      Code:
+        S3Bucket: !Sub nge-iot-lambda-${Environment}
+        S3Key: lambda/verifyAnchor.zip
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          ETH_RPC_URL: !Ref EthRpcUrl
+          CONTRACT_ADDRESS: !Ref ContractAddress
+          ANCHORS_TABLE: !Ref AnchorsTable
+
+  # ─── Lambda Permissions (IoT → Lambda) ───
+
+  RegisterDeviceLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RegisterDeviceLambda
+      Action: lambda:InvokeFunction
+      Principal: iot.amazonaws.com
+
+  AnchorDataLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AnchorDataLambda
+      Action: lambda:InvokeFunction
+      Principal: iot.amazonaws.com
+
+  # ─── AWS IoT Rules ───
+
+  DeviceRegistrationRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub nge_device_registration_${Environment}
+      TopicRulePayload:
+        Description: Routes device registration from IoT Core to blockchain
+        Sql: "SELECT thingName, ownerAddress, firmwareHash, metadataUri FROM 'nge/devices/register'"
+        Actions:
+          - Lambda:
+              FunctionArn: !GetAtt RegisterDeviceLambda.Arn
+        ErrorAction:
+          Sns:
+            TargetArn: !Ref ErrorTopic
+            RoleArn: !GetAtt IoTRuleRole.Arn
+            MessageFormat: JSON
+        RuleDisabled: false
+
+  DataAnchorRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub nge_data_anchor_${Environment}
+      TopicRulePayload:
+        Description: Routes sensor data from IoT devices to blockchain anchor
+        Sql: "SELECT topic(3) AS thingName, * AS payload FROM 'nge/devices/+/data'"
+        Actions:
+          - Lambda:
+              FunctionArn: !GetAtt AnchorDataLambda.Arn
+        ErrorAction:
+          Sqs:
+            QueueUrl: !Ref DeadLetterQueue
+            RoleArn: !GetAtt IoTRuleRole.Arn
+        RuleDisabled: false
+
+  BatchAnchorRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub nge_batch_anchor_${Environment}
+      TopicRulePayload:
+        Description: Routes batched sensor data to blockchain for gas-efficient anchoring
+        Sql: "SELECT topic(3) AS thingName, payloads FROM 'nge/devices/+/data/batch'"
+        Actions:
+          - Lambda:
+              FunctionArn: !GetAtt AnchorDataLambda.Arn
+        ErrorAction:
+          Sqs:
+            QueueUrl: !Ref DeadLetterQueue
+            RoleArn: !GetAtt IoTRuleRole.Arn
+        RuleDisabled: false
+
+  # ─── API Gateway (Verification Endpoint) ───
+
+  VerifyApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub nge-iot-verify-api-${Environment}
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+        AllowHeaders:
+          - Content-Type
+
+  VerifyApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref VerifyApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt VerifyAnchorLambda.Arn
+      PayloadFormatVersion: '2.0'
+
+  VerifyApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref VerifyApi
+      RouteKey: GET /verify
+      Target: !Sub integrations/${VerifyApiIntegration}
+
+  VerifyApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref VerifyApi
+      StageName: !Ref Environment
+      AutoDeploy: true
+
+  VerifyLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref VerifyAnchorLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${VerifyApi}/*/*
+
+  # ─── AWS IoT Thing Type (optional — organizes devices) ───
+
+  NgeDeviceThingType:
+    Type: AWS::IoT::ThingType
+    Properties:
+      ThingTypeName: !Sub NgeDevice-${Environment}
+      ThingTypeProperties:
+        ThingTypeDescription: NextGen Economy blockchain-registered IoT device
+        SearchableAttributes:
+          - deviceId
+          - firmwareHash
+          - ownerAddress
+
+  # ─── AWS IoT Policy (device connection permissions) ───
+
+  NgeDevicePolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyName: !Sub nge-device-policy-${Environment}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - iot:Connect
+            Resource:
+              - !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/${!iot:Connection.Thing.ThingName}
+          - Effect: Allow
+            Action:
+              - iot:Publish
+            Resource:
+              - !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/nge/devices/${!iot:Connection.Thing.ThingName}/data
+              - !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/nge/devices/${!iot:Connection.Thing.ThingName}/data/batch
+          - Effect: Allow
+            Action:
+              - iot:Subscribe
+            Resource:
+              - !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/nge/devices/${!iot:Connection.Thing.ThingName}/commands
+
+# ──────────────────────────────────────────────
+#  Outputs
+# ──────────────────────────────────────────────
+
+Outputs:
+  VerifyApiEndpoint:
+    Description: API endpoint for data verification
+    Value: !Sub https://${VerifyApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/verify
+
+  DeviceTableName:
+    Description: DynamoDB table for device mappings
+    Value: !Ref DeviceTable
+
+  AnchorsTableName:
+    Description: DynamoDB table for data anchors
+    Value: !Ref AnchorsTable
+
+  IoTEndpoint:
+    Description: Use `aws iot describe-endpoint --endpoint-type iot:Data-ATS` to get the MQTT endpoint
+    Value: See AWS CLI command above
+
+  MqttTopics:
+    Description: MQTT topic structure
+    Value: >
+      Registration: nge/devices/register
+      Sensor Data:  nge/devices/{thingName}/data
+      Batch Data:   nge/devices/{thingName}/data/batch
+      Commands:     nge/devices/{thingName}/commands

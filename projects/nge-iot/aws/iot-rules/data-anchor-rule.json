@@ -1,0 +1,17 @@
+{
+  "ruleDescription": "Routes sensor data from IoT devices to the blockchain DataAnchor Lambda for tamper-proof anchoring.",
+  "sql": "SELECT topic(3) AS thingName, * AS payload FROM 'nge/devices/+/data'",
+  "actions": [
+    {
+      "lambda": {
+        "functionArn": "${AnchorDataLambdaArn}"
+      }
+    }
+  ],
+  "errorAction": {
+    "sqs": {
+      "queueUrl": "${DeadLetterQueueUrl}",
+      "roleArn": "${IoTRuleErrorRoleArn}"
+    }
+  }
+}

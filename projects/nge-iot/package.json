@@ -1,0 +1,26 @@
+{
+  "name": "nge-iot",
+  "version": "1.0.0",
+  "description": "Blockchain-IoT primitives: on-chain device identity (ERC-721) and tamper-proof data anchoring. Built on OpenZeppelin v5.x.",
+  "main": "index.js",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "compile:local": "node scripts/compile.js",
+    "test": "npx hardhat test",
+    "test:local": "node scripts/test.js",
+    "node": "npx hardhat node"
+  },
+  "keywords": ["solidity", "iot", "smart-contracts", "openzeppelin", "ethereum", "device-registry", "data-anchor"],
+  "author": "Cloud Creations LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tcooksey1972/nextgen-economy.git",
+    "directory": "projects/nge-iot"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.6.1",
+    "hardhat": "^2.28.6"
+  }
+}
