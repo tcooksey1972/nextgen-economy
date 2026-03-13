@@ -2,6 +2,16 @@
  * @file verifyAnchor.js
  * @description Lambda handler for verifying data integrity via on-chain anchors.
  *
+ * Free Tier notes:
+ *   - Lambda: 128 MB memory (lowest practical) to maximize free tier GB-seconds.
+ *     Read-only operations don't need the 256 MB that write Lambdas use.
+ *   - API Gateway: HTTP API (not REST) — 1M requests/mo free for 12 months,
+ *     then $1.00/M vs $3.50/M for REST APIs.
+ *   - DynamoDB fast path avoids unnecessary RPC calls to the blockchain,
+ *     reducing both latency and potential Infura/Alchemy free tier usage.
+ *   - Only falls back to on-chain verification when ?onchain=true or no
+ *     DynamoDB record exists.
+ *
  * Flow:
  *   1. Client sends a verification request via API Gateway
  *   2. Lambda checks DynamoDB for the anchor record (fast path)

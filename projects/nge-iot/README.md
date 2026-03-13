@@ -224,6 +224,83 @@ aws cloudformation deploy \
 | `DYNAMODB_TABLE` | register, anchor | CloudFormation output |
 | `ANCHORS_TABLE` | anchor, verify | CloudFormation output |
 
+## AWS Cost Estimation (Free Tier Target)
+
+This stack is designed to run within the [AWS Free Tier](https://aws.amazon.com/free/). The estimates below assume a **dev/prototype workload**: ~50 IoT devices, each reporting sensor data every 5 minutes, with moderate verification traffic.
+
+### Usage Assumptions (Monthly)
+
+| Metric | Estimate |
+|--------|----------|
+| Registered devices | 50 |
+| Sensor readings per device/day | 288 (every 5 min) |
+| Total MQTT messages/month | ~432,000 (50 x 288 x 30) |
+| Batch anchoring frequency | Every 30 min (48 batches/device/day) |
+| Lambda invocations/month | ~75,000 (anchoring + registration + verification) |
+| DynamoDB reads + writes/month | ~150,000 |
+| API Gateway requests/month | ~10,000 (verification queries) |
+| SQS messages (DLQ, error cases) | < 1,000 |
+| SNS notifications (errors only) | < 100 |
+
+### Free Tier Limits vs. Our Usage
+
+| Service | Free Tier (Always Free unless noted) | Our Usage | Status |
+|---------|--------------------------------------|-----------|--------|
+| **Lambda** | 1M requests + 400K GB-sec/month | ~75K requests, ~19K GB-sec (256 MB x 5s avg) | **Well within free tier** |
+| **DynamoDB** | 25 GB storage, 25 RCU/25 WCU (on-demand: 200M requests) | ~150K requests, < 1 GB storage | **Well within free tier** |
+| **API Gateway** | 1M HTTP API calls/month *(12-month free)* | ~10K requests | **Well within free tier** |
+| **IoT Core** | $200 credit *(new accounts, 12-month)* | ~432K messages ($0.43), ~13M connect-min ($1.04), ~432K rules ($0.06) | **~$1.53/mo — covered by credits** |
+| **SQS** | 1M requests/month | < 1K requests | **Well within free tier** |
+| **SNS** | 1M publishes + 100K HTTP deliveries/month | < 100 publishes | **Well within free tier** |
+| **CloudWatch** | 10 custom metrics, 5 GB log ingestion | ~3 Lambda log groups, < 1 GB logs | **Well within free tier** |
+| **Secrets Manager** | $0.40/secret/month *(not free tier)* | 1 secret | **~$0.40/mo** |
+
+### Monthly Cost Summary
+
+| Component | Estimated Cost |
+|-----------|---------------|
+| Lambda | $0.00 |
+| DynamoDB | $0.00 |
+| API Gateway (HTTP API) | $0.00 |
+| IoT Core (messaging + connectivity + rules) | $0.00 *(covered by $200 credit)* |
+| SQS | $0.00 |
+| SNS | $0.00 |
+| CloudWatch Logs | $0.00 |
+| Secrets Manager | $0.40 |
+| **Total** | **~$0.40/month** |
+
+### Cost Optimization Notes
+
+- **Batch anchoring is critical.** Single-anchor mode costs more gas and triggers more Lambda invocations. The default 30-min batch window keeps Lambda invocations under 75K/month for 50 devices.
+- **DynamoDB on-demand mode** (PAY_PER_REQUEST) avoids paying for provisioned capacity you don't use. Suitable for dev/prototype traffic patterns.
+- **API Gateway HTTP APIs** are ~71% cheaper than REST APIs ($1.00/M vs $3.50/M) and included in the 12-month free tier.
+- **IoT Core Basic Ingest** (`$aws/rules/{rule}/topic`) bypasses the message broker and skips messaging charges. Consider this for high-frequency devices.
+- **Secrets Manager** is the only service without a free tier. Alternative: store the signer key in SSM Parameter Store SecureString (free) if you don't need automatic rotation.
+- **CloudWatch** log retention defaults to never-expire. Set retention to 7-30 days in dev to avoid long-term storage costs.
+- **Ethereum gas costs** (Sepolia testnet = free; mainnet = variable) are separate from AWS costs and depend on network conditions.
+
+### When You'll Exceed Free Tier
+
+| Scale Milestone | Trigger |
+|-----------------|---------|
+| > 200 devices at 5-min intervals | IoT Core messages exceed $200 credit (~1.7M msg/mo) |
+| > 1M Lambda invocations/month | Shift from free to ~$0.20/M requests |
+| > 1M API Gateway calls/month | HTTP API costs begin (~$1.00/M after free tier) |
+| > 25 GB DynamoDB storage | Storage costs begin (~$0.25/GB/mo) |
+| 12 months after account creation | IoT Core credits and API Gateway free tier expire |
+
+### AWS Pricing Sources
+
+- [AWS Lambda Pricing](https://aws.amazon.com/lambda/pricing/)
+- [Amazon DynamoDB Pricing](https://aws.amazon.com/dynamodb/pricing/)
+- [Amazon API Gateway Pricing](https://aws.amazon.com/api-gateway/pricing/)
+- [AWS IoT Core Pricing](https://aws.amazon.com/iot-core/pricing/)
+- [Amazon SQS Pricing](https://aws.amazon.com/sqs/pricing/)
+- [Amazon SNS Pricing](https://aws.amazon.com/sns/pricing/)
+- [AWS Free Tier](https://aws.amazon.com/free/)
+
+> **Note:** Prices are for US East (N. Virginia). Free tier terms may change — verify on the [AWS Free Tier page](https://aws.amazon.com/free/) before deploying.
+
 ## Testing
 
 43 tests covering:

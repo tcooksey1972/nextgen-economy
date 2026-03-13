@@ -2,6 +2,13 @@
  * @file registerDevice.js
  * @description Lambda handler for registering an IoT device on-chain.
  *
+ * Free Tier notes:
+ *   - Lambda: 1M requests + 400K GB-sec/mo (always free). Device registration
+ *     is low-frequency — even 1000 devices/month uses <0.1% of the free tier.
+ *   - DynamoDB: 25 GB + 200M requests/mo (always free). One write per registration.
+ *   - Secrets Manager: $0.40/secret/mo (NOT free tier). Consider SSM Parameter
+ *     Store SecureString as a free alternative if you don't need auto-rotation.
+ *
  * Flow:
  *   1. AWS IoT Core provisions a new Thing (device)
  *   2. IoT Rule triggers this Lambda via MQTT topic `nge/devices/register`

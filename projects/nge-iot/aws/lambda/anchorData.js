@@ -2,6 +2,16 @@
  * @file anchorData.js
  * @description Lambda handler for anchoring IoT sensor data on-chain.
  *
+ * Free Tier notes:
+ *   - This is the highest-volume Lambda. At 50 devices / 5-min intervals with
+ *     30-min batch windows, expect ~72K invocations/mo — well within the 1M
+ *     free tier limit. Batch mode is critical for staying within free tier:
+ *     it reduces invocations by 6x vs single-anchor mode.
+ *   - DynamoDB writes: ~72K/mo (one per batch) — negligible vs 200M free tier.
+ *   - IoT Core messages: ~432K/mo ($0.43) — covered by $200 credit.
+ *   - For high-frequency devices (>1 msg/sec), consider IoT Core Basic Ingest
+ *     ($aws/rules/{rule}/topic) to eliminate per-message IoT charges entirely.
+ *
  * Flow:
  *   1. Device publishes sensor data to MQTT topic `nge/devices/{thingName}/data`
  *   2. IoT Rule triggers this Lambda

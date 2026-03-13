@@ -1,9 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  NGE IoT Blockchain Bridge — Connects AWS IoT Core services (Industrial,
-  Consumer, Commercial, Automotive) to on-chain DeviceRegistry and DataAnchor
-  smart contracts. Supports device provisioning, sensor data anchoring, and
-  tamper-proof verification via API Gateway.
+  NGE IoT Blockchain Bridge — Connects AWS IoT Core to on-chain DeviceRegistry
+  and DataAnchor smart contracts. Designed to run within the AWS Free Tier for
+  dev/prototype workloads (~50 devices, ~$0.40/mo). See README.md for full
+  cost breakdown. Key free-tier choices: DynamoDB on-demand (PAY_PER_REQUEST),
+  HTTP API Gateway (not REST), minimal Lambda memory (128-256 MB).
 
 # ──────────────────────────────────────────────
 #  Parameters
@@ -41,12 +42,15 @@ Parameters:
 Resources:
 
   # ─── DynamoDB Tables ───
+  # Free Tier: 25 GB storage, 25 RCU/25 WCU (always free).
+  # PAY_PER_REQUEST (on-demand) avoids idle provisioned capacity costs
+  # and stays within free tier for dev workloads (<200M requests/mo).
 
   DeviceTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub nge-iot-devices-${Environment}
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: PAY_PER_REQUEST  # Free tier friendly — no capacity to manage
       AttributeDefinitions:
         - AttributeName: thingName
           AttributeType: S
@@ -67,7 +71,7 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub nge-iot-anchors-${Environment}
-      BillingMode: PAY_PER_REQUEST
+      BillingMode: PAY_PER_REQUEST  # Free tier friendly — no capacity to manage
       AttributeDefinitions:
         - AttributeName: dataHash
           AttributeType: S
@@ -85,6 +89,7 @@ Resources:
             ProjectionType: ALL
 
   # ─── SQS Dead Letter Queue ───
+  # Free Tier: 1M requests/month (always free). DLQ usage is negligible.
 
   DeadLetterQueue:
     Type: AWS::SQS::Queue
@@ -93,6 +98,7 @@ Resources:
       MessageRetentionPeriod: 1209600  # 14 days
 
   # ─── SNS Error Notifications ───
+  # Free Tier: 1M publishes + 1K email deliveries/month (always free).
 
   ErrorTopic:
     Type: AWS::SNS::Topic
@@ -179,6 +185,10 @@ Resources:
                   - !GetAtt DeadLetterQueue.Arn
 
   # ─── Lambda Functions ───
+  # Free Tier: 1M requests + 400K GB-sec/month (always free).
+  # Memory is set to minimum needed (128-256 MB) to maximize free tier
+  # GB-seconds. At 256 MB, free tier covers ~1.6M seconds of execution.
+  # Timeout set conservatively for blockchain transaction confirmation.
 
   RegisterDeviceLambda:
     Type: AWS::Lambda::Function
@@ -190,8 +200,8 @@ Resources:
         S3Bucket: !Sub nge-iot-lambda-${Environment}
         S3Key: lambda/registerDevice.zip
       Role: !GetAtt LambdaExecutionRole.Arn
-      Timeout: 60
-      MemorySize: 256
+      Timeout: 60       # Blockchain tx confirmation can take 15-30s
+      MemorySize: 256   # Minimum for ethers.js + SDK (~19K GB-sec/mo at 75K invocations)
       Environment:
         Variables:
           ETH_RPC_URL: !Ref EthRpcUrl
@@ -209,8 +219,8 @@ Resources:
         S3Bucket: !Sub nge-iot-lambda-${Environment}
         S3Key: lambda/anchorData.zip
       Role: !GetAtt LambdaExecutionRole.Arn
-      Timeout: 60
-      MemorySize: 256
+      Timeout: 60       # Blockchain tx confirmation can take 15-30s
+      MemorySize: 256   # Minimum for ethers.js + SDK
       Environment:
         Variables:
           ETH_RPC_URL: !Ref EthRpcUrl
@@ -229,8 +239,8 @@ Resources:
         S3Bucket: !Sub nge-iot-lambda-${Environment}
         S3Key: lambda/verifyAnchor.zip
       Role: !GetAtt LambdaExecutionRole.Arn
-      Timeout: 30
-      MemorySize: 128
+      Timeout: 30       # Read-only — faster than write operations
+      MemorySize: 128   # Read-only path needs less memory — maximizes free tier
       Environment:
         Variables:
           ETH_RPC_URL: !Ref EthRpcUrl
@@ -254,6 +264,11 @@ Resources:
       Principal: iot.amazonaws.com
 
   # ─── AWS IoT Rules ───
+  # IoT Core Free Tier: $200 credit for new accounts (12 months).
+  # Messaging: $1.00/M messages, Rules: $0.15/M triggered + $0.15/M actions.
+  # At 50 devices / 5-min intervals, total IoT cost is ~$1.53/mo — well
+  # within the $200 credit. Use Basic Ingest ($aws/rules/...) to skip
+  # messaging charges for high-frequency devices if scaling beyond free tier.
 
   DeviceRegistrationRule:
     Type: AWS::IoT::TopicRule
@@ -305,12 +320,15 @@ Resources:
         RuleDisabled: false
 
   # ─── API Gateway (Verification Endpoint) ───
+  # Using HTTP API (ApiGatewayV2), NOT REST API (ApiGateway).
+  # HTTP API is ~71% cheaper ($1.00/M vs $3.50/M) and included in
+  # the 12-month free tier (1M requests/month).
 
   VerifyApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
       Name: !Sub nge-iot-verify-api-${Environment}
-      ProtocolType: HTTP
+      ProtocolType: HTTP  # HTTP API — cheaper than REST, free tier eligible
       CorsConfiguration:
         AllowOrigins:
           - '*'
