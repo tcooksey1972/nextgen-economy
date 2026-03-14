@@ -1,10 +1,10 @@
 # NextGen-Economy
 
-A Web3 security platform by **Cloud Creations LLC**. Composable Solidity security modules built on OpenZeppelin v5, with an AWS serverless monitoring backend that watches your contracts in real time.
+A Web3 platform by **Cloud Creations LLC**. Composable Solidity smart contracts built on OpenZeppelin v5, with AWS serverless backends — spanning security, IoT, and tokenomics.
 
 ## Projects
 
-This monorepo contains two projects that work together:
+This monorepo contains the following projects:
 
 ### [NGE Sentinel](projects/nge-sentinel/) — Smart Contract Security Toolkit
 
@@ -52,6 +52,27 @@ S3 + CloudFront
 - Runs entirely on **AWS Free Tier** (~$0/month for demo usage)
 - 13 unit tests with mocked AWS/blockchain dependencies
 
+### [NGE Token](projects/nge-token/) — ERC-20 Platform Token
+
+The NGE platform token powering governance, payments, and staking across the ecosystem.
+
+| Feature | Description |
+|---------|-------------|
+| **ERC-20** | Fungible token ("NextGen Economy" / NGE) with 18 decimals |
+| **Burnable** | Token holders can burn their own tokens |
+| **Pausable** | Emergency stop on all transfers, minting, and burning |
+| **Permit (EIP-2612)** | Gasless approvals via off-chain signatures |
+| **Votes (ERC20Votes)** | Governance voting power with delegation and checkpoints |
+| **Supply Cap** | Configurable maximum supply (0 = unlimited) |
+| **Sentinel Hooks** | Virtual hooks for composing with nge-sentinel security modules |
+
+Two example deployments: `SimpleNGEToken` (Ownable) and `SentinelNGEToken` (transfer limits + large transfer detection). AWS serverless API for balance queries, transfer history, and token info.
+
+- **Solidity** ^0.8.26 on **Hardhat** 2.28
+- **OpenZeppelin Contracts** v5.6.1
+- **50+ passing tests** across 2 test suites
+- AWS Free Tier optimized ($0.00/month for dev usage)
+
 ## Quick Start
 
 ### Prerequisites
@@ -77,6 +98,15 @@ npm test              # Run unit tests
 
 # Deploy (requires AWS CLI + SAM CLI configured)
 npm run deploy
+```
+
+### Token
+
+```bash
+cd projects/nge-token
+npm install
+npm test              # Run all 50+ tests
+npm run compile       # Compile contracts
 ```
 
 ## Tech Stack
@@ -106,14 +136,24 @@ nextgen-economy/
     │   ├── scripts/                    # Compile & test scripts
     │   ├── hardhat.config.js
     │   └── package.json
-    └── nge-sentinel-monitor/           # AWS serverless backend
-        ├── src/
-        │   ├── lambdas/                # Event poller, heartbeat monitor, API
-        │   ├── lib/                    # Shared utilities
-        │   └── abi/                    # Contract ABIs
-        ├── frontend/                   # Static dashboard
-        ├── tests/                      # Unit tests
-        ├── template.yaml               # SAM/CloudFormation template
+    ├── nge-sentinel-monitor/           # AWS serverless backend
+    │   ├── src/
+    │   │   ├── lambdas/                # Event poller, heartbeat monitor, API
+    │   │   ├── lib/                    # Shared utilities
+    │   │   └── abi/                    # Contract ABIs
+    │   ├── frontend/                   # Static dashboard
+    │   ├── tests/                      # Unit tests
+    │   ├── template.yaml               # SAM/CloudFormation template
+    │   └── package.json
+    ├── nge-iot/                        # Blockchain-IoT device identity & data anchoring
+    │   ├── contracts/iot/              # DeviceRegistry (ERC-721) + DataAnchor
+    │   ├── test/                       # 43 tests
+    │   ├── aws/                        # Lambda + IoT Rules + CloudFormation
+    │   └── package.json
+    └── nge-token/                      # ERC-20 platform token
+        ├── contracts/token/            # NGEToken (abstract) + examples
+        ├── test/                       # 50+ tests
+        ├── aws/                        # Lambda + API Gateway + CloudFormation
         └── package.json
 ```
 
