@@ -1,0 +1,18 @@
+{
+  "name": "nge-use-cases",
+  "version": "1.0.0",
+  "description": "End-to-end use case scenarios for the NextGen Economy platform. Clone, install, and deploy.",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "node": "npx hardhat node"
+  },
+  "keywords": ["solidity", "use-cases", "web3", "iot", "defi", "governance"],
+  "author": "Cloud Creations LLC",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.6.1",
+    "hardhat": "^2.28.6"
+  }
+}
