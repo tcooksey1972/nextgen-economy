@@ -20,7 +20,7 @@ const logoStyle = {
 
 const linksStyle = {
   display: "flex",
-  gap: "24px",
+  gap: "8px",
   alignItems: "center",
 };
 
@@ -38,6 +38,13 @@ const activeLinkStyle = {
   ...linkStyle,
   color: "var(--accent)",
   background: "rgba(59, 130, 246, 0.1)",
+};
+
+const dividerStyle = {
+  width: "1px",
+  height: "20px",
+  background: "var(--border)",
+  margin: "0 8px",
 };
 
 const walletStyle = {
@@ -64,10 +71,27 @@ export default function Navbar({ account, chainId, isCorrectChain, onConnect, on
       </NavLink>
 
       <div style={linksStyle}>
+        {/* Marketing pages — always visible */}
         <NavLink
-          to="/"
+          to="/use-cases"
           style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
-          end
+        >
+          Use Cases
+        </NavLink>
+        <NavLink
+          to="/about"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          About
+        </NavLink>
+
+        {/* Divider between marketing and app */}
+        <div style={dividerStyle} />
+
+        {/* App pages */}
+        <NavLink
+          to="/dashboard"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
         >
           Dashboard
         </NavLink>
