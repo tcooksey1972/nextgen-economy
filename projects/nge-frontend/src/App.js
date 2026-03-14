@@ -2,6 +2,9 @@ import React from "react";
 import { Routes, Route } from "react-router-dom";
 import useWallet from "./hooks/useWallet";
 import Navbar from "./components/Navbar";
+import Landing from "./pages/Landing";
+import UseCases from "./pages/UseCases";
+import About from "./pages/About";
 import Dashboard from "./pages/Dashboard";
 import Token from "./pages/Token";
 import Devices from "./pages/Devices";
@@ -35,7 +38,10 @@ export default function App() {
 
       <main style={layoutStyle}>
         <Routes>
-          <Route path="/" element={<Dashboard wallet={wallet} />} />
+          <Route path="/" element={<Landing />} />
+          <Route path="/use-cases" element={<UseCases />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/dashboard" element={<Dashboard wallet={wallet} />} />
           <Route path="/token" element={<Token wallet={wallet} />} />
           <Route path="/devices" element={<Devices wallet={wallet} />} />
           <Route path="/governance" element={<Governance wallet={wallet} />} />
