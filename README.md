@@ -73,6 +73,29 @@ Two example deployments: `SimpleNGEToken` (Ownable) and `SentinelNGEToken` (tran
 - **50+ passing tests** across 2 test suites
 - AWS Free Tier optimized ($0.00/month for dev usage)
 
+### [NGE Frontend](projects/nge-frontend/) — Platform UI
+
+React single-page application with MetaMask wallet integration.
+
+| Page | Description |
+|------|-------------|
+| **Dashboard** | Platform overview — wallet balance, token supply, device count |
+| **Token** | Transfer tokens, delegate voting power, burn |
+| **Devices** | Browse IoT device registry, verify data anchors on-chain |
+| **Governance** | Voting power delegation and governance stats |
+
+- **React 18** with React Router v6
+- **ethers.js v6** + MetaMask for wallet connection
+- **S3 + CloudFront** hosting (Free Tier)
+- Dark theme, responsive layout
+
+## CI/CD
+
+GitHub Actions workflows automate the entire pipeline:
+
+- **CI** (`ci.yml`): Compiles and tests all 4 projects in parallel on every PR
+- **Deploy** (`deploy.yml`): Manual dispatch — deploys contracts to Sepolia, stores addresses in SSM, deploys AWS stacks, deploys frontend to S3/CloudFront
+
 ## Quick Start
 
 ### Prerequisites
@@ -109,20 +132,52 @@ npm test              # Run all 50+ tests
 npm run compile       # Compile contracts
 ```
 
+### Frontend
+
+```bash
+cd projects/nge-frontend
+cp .env.example .env  # Edit with deployed contract addresses
+npm install
+npm start             # Opens at http://localhost:3000
+```
+
+### Deploy Everything
+
+```bash
+# 1. Deploy contracts to Sepolia
+cd projects/nge-token && npx hardhat run scripts/deploy.js --network sepolia
+cd projects/nge-iot && npx hardhat run scripts/deploy.js --network sepolia
+cd projects/nge-sentinel && npx hardhat run scripts/deploy.js --network sepolia
+
+# 2. Store addresses in SSM
+node scripts/ssm-store.js --project token --address 0x...
+node scripts/ssm-store.js --project iot --address 0x...
+node scripts/ssm-store.js --project sentinel --address 0x...
+
+# 3. Deploy AWS infrastructure (each project)
+# Or use the GitHub Actions deploy workflow for automated deployment
+```
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Smart Contracts | Solidity ^0.8.26, OpenZeppelin v5, Hardhat |
 | Backend | AWS Lambda, API Gateway, DynamoDB, SNS, EventBridge |
-| Frontend | Vanilla HTML/CSS/JS (S3 + CloudFront) |
+| Frontend | React 18, ethers.js v6, MetaMask (S3 + CloudFront) |
 | Blockchain | Ethereum (Sepolia testnet), ethers.js v6 |
 | Infrastructure | AWS SAM / CloudFormation |
+| CI/CD | GitHub Actions (test + deploy) |
 
 ## Repository Structure
 
 ```
 nextgen-economy/
+├── .github/workflows/
+│   ├── ci.yml                          # Test all projects on PR
+│   └── deploy.yml                      # Deploy contracts + infra + frontend
+├── scripts/
+│   └── ssm-store.js                    # Store contract addresses in SSM
 ├── CLAUDE.md                           # Development guidelines & patterns
 ├── REFERENCE-INDEX.md                  # Ethereum reference material index
 ├── PROJECT-STRUCTURE.md                # Recommended layout template
@@ -133,27 +188,29 @@ nextgen-economy/
     │   │   ├── sentinel/               # Core modules + interfaces
     │   │   └── examples/               # Example vault contracts
     │   ├── test/sentinel/              # Hardhat tests
-    │   ├── scripts/                    # Compile & test scripts
-    │   ├── hardhat.config.js
+    │   ├── scripts/                    # Compile, test & deploy scripts
     │   └── package.json
-    ├── nge-sentinel-monitor/           # AWS serverless backend
-    │   ├── src/
-    │   │   ├── lambdas/                # Event poller, heartbeat monitor, API
-    │   │   ├── lib/                    # Shared utilities
-    │   │   └── abi/                    # Contract ABIs
+    ├── nge-sentinel-monitor/           # AWS serverless monitoring
+    │   ├── src/lambdas/                # Event poller, heartbeat, API
     │   ├── frontend/                   # Static dashboard
-    │   ├── tests/                      # Unit tests
     │   ├── template.yaml               # SAM/CloudFormation template
     │   └── package.json
-    ├── nge-iot/                        # Blockchain-IoT device identity & data anchoring
+    ├── nge-iot/                        # Blockchain-IoT primitives
     │   ├── contracts/iot/              # DeviceRegistry (ERC-721) + DataAnchor
-    │   ├── test/                       # 43 tests
+    │   ├── scripts/                    # Compile, test & deploy scripts
     │   ├── aws/                        # Lambda + IoT Rules + CloudFormation
     │   └── package.json
-    └── nge-token/                      # ERC-20 platform token
-        ├── contracts/token/            # NGEToken (abstract) + examples
-        ├── test/                       # 50+ tests
-        ├── aws/                        # Lambda + API Gateway + CloudFormation
+    ├── nge-token/                      # ERC-20 platform token
+    │   ├── contracts/token/            # NGEToken (abstract) + examples
+    │   ├── scripts/                    # Compile, test & deploy scripts
+    │   ├── aws/                        # Lambda + API Gateway + CloudFormation
+    │   └── package.json
+    └── nge-frontend/                   # React platform UI
+        ├── src/
+        │   ├── pages/                  # Dashboard, Token, Devices, Governance
+        │   ├── hooks/                  # useWallet, useTokenContract
+        │   └── abi/                    # Contract ABIs
+        ├── aws/cloudformation/         # S3 + CloudFront hosting
         └── package.json
 ```
 

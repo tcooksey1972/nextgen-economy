@@ -8,8 +8,8 @@
  * Optimizer is enabled with 200 runs — a balanced setting for contracts that
  * are deployed once but called many times.
  *
- * Network configs (Sepolia, mainnet) will be added when deployment scripts
- * are ready. For now, only the default in-memory Hardhat network is used.
+ * Network configs use env vars so secrets stay out of source control.
+ * Set DEPLOYER_PRIVATE_KEY and ETH_RPC_URL before deploying.
  */
 require("@nomicfoundation/hardhat-toolbox");
 
@@ -22,6 +22,16 @@ module.exports = {
         enabled: true,
         runs: 200,
       },
+    },
+  },
+  networks: {
+    sepolia: {
+      url: process.env.ETH_RPC_URL || "",
+      accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
+    },
+    mainnet: {
+      url: process.env.ETH_RPC_URL || "",
+      accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
     },
   },
 };
