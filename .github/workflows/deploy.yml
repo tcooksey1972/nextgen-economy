@@ -1,0 +1,274 @@
+# Deploy — Deploy contracts and infrastructure on merge to main.
+#
+# This workflow is triggered manually (workflow_dispatch) or on push to main.
+# It deploys in stages:
+#   1. Smart contracts to Sepolia (parallel)
+#   2. Store addresses in SSM Parameter Store
+#   3. Deploy AWS serverless stacks (parallel)
+#   4. Deploy frontend to S3/CloudFront
+#
+# Required GitHub Secrets:
+#   DEPLOYER_PRIVATE_KEY  — Ethereum deployer wallet private key
+#   ETH_RPC_URL           — Sepolia RPC endpoint (Infura/Alchemy)
+#   AWS_ACCESS_KEY_ID     — IAM user with deploy permissions
+#   AWS_SECRET_ACCESS_KEY — IAM secret key
+#   AWS_REGION            — e.g., us-east-1
+#   ALERT_EMAIL           — Email for SNS error notifications
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      deploy_contracts:
+        description: 'Deploy smart contracts'
+        required: true
+        default: true
+        type: boolean
+      deploy_infrastructure:
+        description: 'Deploy AWS infrastructure'
+        required: true
+        default: true
+        type: boolean
+      deploy_frontend:
+        description: 'Deploy frontend'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+  DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  # ─── Stage 1: Deploy Smart Contracts ────────────────────
+  deploy-sentinel-contract:
+    name: Deploy Sentinel Contract
+    if: inputs.deploy_contracts
+    runs-on: ubuntu-latest
+    outputs:
+      contract_address: ${{ steps.deploy.outputs.address }}
+    defaults:
+      run:
+        working-directory: projects/nge-sentinel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-sentinel/package-lock.json
+      - run: npm ci
+      - name: Deploy to Sepolia
+        id: deploy
+        run: |
+          output=$(npx hardhat run scripts/deploy.js --network sepolia 2>&1)
+          echo "$output"
+          address=$(echo "$output" | grep -oP '0x[0-9a-fA-F]{40}' | head -1)
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+
+  deploy-iot-contract:
+    name: Deploy IoT Contract
+    if: inputs.deploy_contracts
+    runs-on: ubuntu-latest
+    outputs:
+      contract_address: ${{ steps.deploy.outputs.address }}
+    defaults:
+      run:
+        working-directory: projects/nge-iot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-iot/package-lock.json
+      - run: npm ci
+      - name: Deploy to Sepolia
+        id: deploy
+        run: |
+          output=$(npx hardhat run scripts/deploy.js --network sepolia 2>&1)
+          echo "$output"
+          address=$(echo "$output" | grep -oP '0x[0-9a-fA-F]{40}' | head -1)
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+
+  deploy-token-contract:
+    name: Deploy Token Contract
+    if: inputs.deploy_contracts
+    runs-on: ubuntu-latest
+    outputs:
+      contract_address: ${{ steps.deploy.outputs.address }}
+    defaults:
+      run:
+        working-directory: projects/nge-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-token/package-lock.json
+      - run: npm ci
+      - name: Deploy to Sepolia
+        id: deploy
+        run: |
+          output=$(npx hardhat run scripts/deploy.js --network sepolia 2>&1)
+          echo "$output"
+          address=$(echo "$output" | grep -oP '0x[0-9a-fA-F]{40}' | head -1)
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+
+  # ─── Stage 2: Store Addresses in SSM ───────────────────
+  store-addresses:
+    name: Store Contract Addresses in SSM
+    if: inputs.deploy_contracts
+    needs: [deploy-sentinel-contract, deploy-iot-contract, deploy-token-contract]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Store sentinel address
+        if: needs.deploy-sentinel-contract.outputs.contract_address
+        run: node scripts/ssm-store.js --project sentinel --address ${{ needs.deploy-sentinel-contract.outputs.contract_address }}
+      - name: Store IoT address
+        if: needs.deploy-iot-contract.outputs.contract_address
+        run: node scripts/ssm-store.js --project iot --address ${{ needs.deploy-iot-contract.outputs.contract_address }}
+      - name: Store token address
+        if: needs.deploy-token-contract.outputs.contract_address
+        run: node scripts/ssm-store.js --project token --address ${{ needs.deploy-token-contract.outputs.contract_address }}
+      - name: Store RPC URL
+        run: node scripts/ssm-store.js --project token --address 0x0000000000000000000000000000000000000000 --rpc-url ${{ secrets.ETH_RPC_URL }}
+
+  # ─── Stage 3: Deploy AWS Infrastructure ────────────────
+  deploy-sentinel-monitor:
+    name: Deploy Sentinel Monitor
+    if: inputs.deploy_infrastructure
+    needs: [store-addresses]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/nge-sentinel-monitor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/setup-sam@v2
+      - run: npm ci
+      - name: SAM Build
+        run: sam build
+      - name: SAM Deploy
+        run: |
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
+            --stack-name nge-sentinel-monitor-${{ inputs.environment }} \
+            --parameter-overrides \
+              EthRpcUrl=${{ secrets.ETH_RPC_URL }} \
+              ContractAddress=$(aws ssm get-parameter --name /nge/sentinel/contract-address --query Parameter.Value --output text) \
+              AlertEmail=${{ secrets.ALERT_EMAIL }} \
+            --capabilities CAPABILITY_IAM
+
+  deploy-token-api:
+    name: Deploy Token API
+    if: inputs.deploy_infrastructure
+    needs: [store-addresses]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Deploy Token API stack
+        run: |
+          aws cloudformation deploy \
+            --template-file projects/nge-token/aws/cloudformation/token-api.yaml \
+            --stack-name nge-token-api-${{ inputs.environment }} \
+            --parameter-overrides \
+              Environment=${{ inputs.environment }} \
+              NotificationEmail=${{ secrets.ALERT_EMAIL }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+
+  deploy-iot-bridge:
+    name: Deploy IoT Bridge
+    if: inputs.deploy_infrastructure
+    needs: [store-addresses]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Deploy IoT Bridge stack
+        run: |
+          aws cloudformation deploy \
+            --template-file projects/nge-iot/aws/cloudformation/iot-blockchain-bridge.yaml \
+            --stack-name nge-iot-bridge-${{ inputs.environment }} \
+            --parameter-overrides \
+              Environment=${{ inputs.environment }} \
+              NotificationEmail=${{ secrets.ALERT_EMAIL }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+
+  # ─── Stage 4: Deploy Frontend ──────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend
+    if: inputs.deploy_frontend
+    needs: [deploy-sentinel-monitor, deploy-token-api, deploy-iot-bridge]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/nge-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-frontend/package-lock.json
+      - run: npm ci
+      - name: Build frontend
+        env:
+          REACT_APP_TOKEN_API: $(aws cloudformation describe-stacks --stack-name nge-token-api-${{ inputs.environment }} --query "Stacks[0].Outputs[?OutputKey=='TokenApiEndpoint'].OutputValue" --output text)
+          REACT_APP_CHAIN_ID: "11155111"
+        run: npm run build
+      - name: Deploy to S3
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name nge-frontend-${{ inputs.environment }} \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendBucket'].OutputValue" \
+            --output text)
+          aws s3 sync build/ s3://$BUCKET --delete
+      - name: Invalidate CloudFront cache
+        run: |
+          DISTRIBUTION=$(aws cloudformation describe-stacks \
+            --stack-name nge-frontend-${{ inputs.environment }} \
+            --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
+            --output text)
+          aws cloudfront create-invalidation --distribution-id $DISTRIBUTION --paths "/*"

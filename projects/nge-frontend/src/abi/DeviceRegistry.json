@@ -1,0 +1,23 @@
+[
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function totalSupply() view returns (uint256)",
+  "function ownerOf(uint256 tokenId) view returns (address)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
+  "function tokenURI(uint256 tokenId) view returns (string)",
+  "function deviceCount() view returns (uint256)",
+  "function deviceStatus(uint256 deviceId) view returns (uint8)",
+  "function firmwareHash(uint256 deviceId) view returns (bytes32)",
+  "function isDeviceActive(uint256 deviceId) view returns (bool)",
+  "function isAnchored(bytes32 dataHash) view returns (bool)",
+  "function getAnchor(bytes32 dataHash) view returns (uint256 deviceId, uint256 timestamp, uint256 blockNumber)",
+  "function deviceAnchorCount(uint256 deviceId) view returns (uint256)",
+  "function deviceNonce(uint256 deviceId) view returns (uint256)",
+  "event DeviceRegistered(uint256 indexed deviceId, address indexed owner, bytes32 firmwareHash)",
+  "event DeviceDeactivated(uint256 indexed deviceId)",
+  "event DeviceReactivated(uint256 indexed deviceId)",
+  "event DeviceSuspended(uint256 indexed deviceId)",
+  "event FirmwareUpdated(uint256 indexed deviceId, bytes32 oldHash, bytes32 newHash)",
+  "event DataAnchored(uint256 indexed deviceId, bytes32 indexed dataHash, uint256 timestamp, uint256 nonce)"
+]

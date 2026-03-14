@@ -1,15 +1,9 @@
 /**
  * @file hardhat.config.js
- * @description Hardhat configuration for the NGE Sentinel project.
+ * @description Hardhat configuration for the NGE IoT project.
  *
- * Solidity 0.8.26 is used to match the solcjs version bundled with Hardhat
- * (ensures scripts/compile.js produces identical output).
- *
- * Optimizer is enabled with 200 runs — a balanced setting for contracts that
- * are deployed once but called many times.
- *
- * Network configs use env vars so secrets stay out of source control.
- * Set DEPLOYER_PRIVATE_KEY and ETH_RPC_URL before deploying.
+ * Solidity 0.8.26 matches the nge-sentinel project for cross-project
+ * composability. Optimizer enabled with 200 runs.
  */
 require("@nomicfoundation/hardhat-toolbox");
 

@@ -1,0 +1,361 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  NGE Token API — Serverless backend for the NGE ERC-20 platform token.
+  Provides balance queries, transfer history, and token info via API Gateway.
+  Designed to run within the AWS Free Tier for dev/prototype workloads.
+  See README.md for full cost breakdown (~$0.40/mo).
+
+# ──────────────────────────────────────────────
+#  Parameters
+# ──────────────────────────────────────────────
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment
+
+  EthRpcUrl:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /nge/token/eth-rpc-url
+    Description: Ethereum JSON-RPC endpoint (Infura/Alchemy)
+
+  ContractAddress:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /nge/token/contract-address
+    Description: SimpleNGEToken or SentinelNGEToken contract address
+
+  NotificationEmail:
+    Type: String
+    Description: Email for error notifications
+
+# ──────────────────────────────────────────────
+#  Resources
+# ──────────────────────────────────────────────
+
+Resources:
+
+  # ─── DynamoDB Tables ───
+  # Free Tier: 25 GB storage, 25 RCU/25 WCU (always free).
+  # PAY_PER_REQUEST (on-demand) avoids idle provisioned capacity costs.
+
+  BalancesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub nge-token-balances-${Environment}
+      BillingMode: PAY_PER_REQUEST  # Free tier friendly — no capacity to manage
+      AttributeDefinitions:
+        - AttributeName: address
+          AttributeType: S
+      KeySchema:
+        - AttributeName: address
+          KeyType: HASH
+
+  TransfersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub nge-token-transfers-${Environment}
+      BillingMode: PAY_PER_REQUEST  # Free tier friendly — no capacity to manage
+      AttributeDefinitions:
+        - AttributeName: transactionHash
+          AttributeType: S
+        - AttributeName: from
+          AttributeType: S
+        - AttributeName: to
+          AttributeType: S
+      KeySchema:
+        - AttributeName: transactionHash
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: from-index
+          KeySchema:
+            - AttributeName: from
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: to-index
+          KeySchema:
+            - AttributeName: to
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  MetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub nge-token-metadata-${Environment}
+      BillingMode: PAY_PER_REQUEST  # Free tier friendly — stores cursor state only
+      AttributeDefinitions:
+        - AttributeName: key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: key
+          KeyType: HASH
+
+  # ─── SNS Error Notifications ───
+  # Free Tier: 1M publishes + 1K email deliveries/month (always free).
+
+  ErrorTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub nge-token-errors-${Environment}
+
+  ErrorSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref ErrorTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  # ─── IAM Roles ───
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub nge-token-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt BalancesTable.Arn
+                  - !GetAtt TransfersTable.Arn
+                  - !Sub ${TransfersTable.Arn}/index/*
+                  - !GetAtt MetadataTable.Arn
+
+  # ─── Lambda Functions ───
+  # Free Tier: 1M requests + 400K GB-sec/month (always free).
+  # Memory set to minimum needed (128-256 MB) to maximize free tier.
+
+  GetBalanceLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub nge-token-get-balance-${Environment}
+      Runtime: nodejs18.x
+      Handler: getBalance.handler
+      Code:
+        S3Bucket: !Sub nge-token-lambda-${Environment}
+        S3Key: lambda/getBalance.zip
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 15       # Read-only — fast response
+      MemorySize: 128   # Read-only path needs less memory — maximizes free tier
+      Environment:
+        Variables:
+          ETH_RPC_URL: !Ref EthRpcUrl
+          CONTRACT_ADDRESS: !Ref ContractAddress
+          BALANCES_TABLE: !Ref BalancesTable
+
+  GetTransfersLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub nge-token-get-transfers-${Environment}
+      Runtime: nodejs18.x
+      Handler: getTransfers.handler
+      Code:
+        S3Bucket: !Sub nge-token-lambda-${Environment}
+        S3Key: lambda/getTransfers.zip
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 15       # DynamoDB-only — fast response
+      MemorySize: 128   # Read-only path needs less memory — maximizes free tier
+      Environment:
+        Variables:
+          TRANSFERS_TABLE: !Ref TransfersTable
+
+  GetTokenInfoLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub nge-token-get-token-info-${Environment}
+      Runtime: nodejs18.x
+      Handler: getTokenInfo.handler
+      Code:
+        S3Bucket: !Sub nge-token-lambda-${Environment}
+        S3Key: lambda/getTokenInfo.zip
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 15       # Read-only on-chain calls
+      MemorySize: 128   # Read-only path — maximizes free tier
+      Environment:
+        Variables:
+          ETH_RPC_URL: !Ref EthRpcUrl
+          CONTRACT_ADDRESS: !Ref ContractAddress
+
+  ProcessTransferEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub nge-token-process-events-${Environment}
+      Runtime: nodejs18.x
+      Handler: processTransferEvent.handler
+      Code:
+        S3Bucket: !Sub nge-token-lambda-${Environment}
+        S3Key: lambda/processTransferEvent.zip
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 120      # Event processing can be slower (batch blocks)
+      MemorySize: 256   # Needs more memory for ethers.js event parsing
+      Environment:
+        Variables:
+          ETH_RPC_URL: !Ref EthRpcUrl
+          CONTRACT_ADDRESS: !Ref ContractAddress
+          BALANCES_TABLE: !Ref BalancesTable
+          TRANSFERS_TABLE: !Ref TransfersTable
+          METADATA_TABLE: !Ref MetadataTable
+
+  # ─── EventBridge Schedule (Event Poller) ───
+  # Free Tier: EventBridge schedules are free. Lambda invocations count
+  # toward the 1M free tier. At 1/min = 43,200/mo — well within limits.
+
+  EventPollerSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub nge-token-event-poller-${Environment}
+      Description: Polls for NGE token Transfer events every minute
+      ScheduleExpression: rate(1 minute)
+      State: ENABLED
+      Targets:
+        - Id: ProcessTransferEventTarget
+          Arn: !GetAtt ProcessTransferEventLambda.Arn
+
+  EventPollerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ProcessTransferEventLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventPollerSchedule.Arn
+
+  # ─── API Gateway (Token API) ───
+  # Using HTTP API (ApiGatewayV2), NOT REST API.
+  # HTTP API is ~71% cheaper ($1.00/M vs $3.50/M) and included in
+  # the 12-month free tier (1M requests/month).
+
+  TokenApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub nge-token-api-${Environment}
+      ProtocolType: HTTP  # HTTP API — cheaper than REST, free tier eligible
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+        AllowHeaders:
+          - Content-Type
+
+  TokenApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref TokenApi
+      StageName: !Ref Environment
+      AutoDeploy: true
+
+  # ─── API Routes ───
+
+  BalanceIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref TokenApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetBalanceLambda.Arn
+      PayloadFormatVersion: '2.0'
+
+  BalanceRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref TokenApi
+      RouteKey: GET /balance
+      Target: !Sub integrations/${BalanceIntegration}
+
+  TransfersIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref TokenApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetTransfersLambda.Arn
+      PayloadFormatVersion: '2.0'
+
+  TransfersRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref TokenApi
+      RouteKey: GET /transfers
+      Target: !Sub integrations/${TransfersIntegration}
+
+  TokenInfoIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref TokenApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt GetTokenInfoLambda.Arn
+      PayloadFormatVersion: '2.0'
+
+  TokenInfoRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref TokenApi
+      RouteKey: GET /token-info
+      Target: !Sub integrations/${TokenInfoIntegration}
+
+  # ─── Lambda Permissions (API Gateway → Lambda) ───
+
+  GetBalanceApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetBalanceLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TokenApi}/*/*
+
+  GetTransfersApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetTransfersLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TokenApi}/*/*
+
+  GetTokenInfoApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetTokenInfoLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TokenApi}/*/*
+
+# ──────────────────────────────────────────────
+#  Outputs
+# ──────────────────────────────────────────────
+
+Outputs:
+  TokenApiEndpoint:
+    Description: API endpoint for token queries
+    Value: !Sub https://${TokenApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+
+  ApiRoutes:
+    Description: Available API routes
+    Value: >
+      GET /balance?address=0x...
+      GET /transfers?address=0x...&limit=20
+      GET /token-info
+
+  BalancesTableName:
+    Description: DynamoDB table for cached balances
+    Value: !Ref BalancesTable
+
+  TransfersTableName:
+    Description: DynamoDB table for transfer history
+    Value: !Ref TransfersTable

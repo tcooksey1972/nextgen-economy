@@ -1,10 +1,10 @@
 # NextGen-Economy
 
-A Web3 security platform by **Cloud Creations LLC**. Composable Solidity security modules built on OpenZeppelin v5, with an AWS serverless monitoring backend that watches your contracts in real time.
+A Web3 platform by **Cloud Creations LLC**. Composable Solidity smart contracts built on OpenZeppelin v5, with AWS serverless backends — spanning security, IoT, and tokenomics.
 
 ## Projects
 
-This monorepo contains two projects that work together:
+This monorepo contains the following projects:
 
 ### [NGE Sentinel](projects/nge-sentinel/) — Smart Contract Security Toolkit
 
@@ -52,6 +52,50 @@ S3 + CloudFront
 - Runs entirely on **AWS Free Tier** (~$0/month for demo usage)
 - 13 unit tests with mocked AWS/blockchain dependencies
 
+### [NGE Token](projects/nge-token/) — ERC-20 Platform Token
+
+The NGE platform token powering governance, payments, and staking across the ecosystem.
+
+| Feature | Description |
+|---------|-------------|
+| **ERC-20** | Fungible token ("NextGen Economy" / NGE) with 18 decimals |
+| **Burnable** | Token holders can burn their own tokens |
+| **Pausable** | Emergency stop on all transfers, minting, and burning |
+| **Permit (EIP-2612)** | Gasless approvals via off-chain signatures |
+| **Votes (ERC20Votes)** | Governance voting power with delegation and checkpoints |
+| **Supply Cap** | Configurable maximum supply (0 = unlimited) |
+| **Sentinel Hooks** | Virtual hooks for composing with nge-sentinel security modules |
+
+Two example deployments: `SimpleNGEToken` (Ownable) and `SentinelNGEToken` (transfer limits + large transfer detection). AWS serverless API for balance queries, transfer history, and token info.
+
+- **Solidity** ^0.8.26 on **Hardhat** 2.28
+- **OpenZeppelin Contracts** v5.6.1
+- **50+ passing tests** across 2 test suites
+- AWS Free Tier optimized ($0.00/month for dev usage)
+
+### [NGE Frontend](projects/nge-frontend/) — Platform UI
+
+React single-page application with MetaMask wallet integration.
+
+| Page | Description |
+|------|-------------|
+| **Dashboard** | Platform overview — wallet balance, token supply, device count |
+| **Token** | Transfer tokens, delegate voting power, burn |
+| **Devices** | Browse IoT device registry, verify data anchors on-chain |
+| **Governance** | Voting power delegation and governance stats |
+
+- **React 18** with React Router v6
+- **ethers.js v6** + MetaMask for wallet connection
+- **S3 + CloudFront** hosting (Free Tier)
+- Dark theme, responsive layout
+
+## CI/CD
+
+GitHub Actions workflows automate the entire pipeline:
+
+- **CI** (`ci.yml`): Compiles and tests all 4 projects in parallel on every PR
+- **Deploy** (`deploy.yml`): Manual dispatch — deploys contracts to Sepolia, stores addresses in SSM, deploys AWS stacks, deploys frontend to S3/CloudFront
+
 ## Quick Start
 
 ### Prerequisites
@@ -79,20 +123,61 @@ npm test              # Run unit tests
 npm run deploy
 ```
 
+### Token
+
+```bash
+cd projects/nge-token
+npm install
+npm test              # Run all 50+ tests
+npm run compile       # Compile contracts
+```
+
+### Frontend
+
+```bash
+cd projects/nge-frontend
+cp .env.example .env  # Edit with deployed contract addresses
+npm install
+npm start             # Opens at http://localhost:3000
+```
+
+### Deploy Everything
+
+```bash
+# 1. Deploy contracts to Sepolia
+cd projects/nge-token && npx hardhat run scripts/deploy.js --network sepolia
+cd projects/nge-iot && npx hardhat run scripts/deploy.js --network sepolia
+cd projects/nge-sentinel && npx hardhat run scripts/deploy.js --network sepolia
+
+# 2. Store addresses in SSM
+node scripts/ssm-store.js --project token --address 0x...
+node scripts/ssm-store.js --project iot --address 0x...
+node scripts/ssm-store.js --project sentinel --address 0x...
+
+# 3. Deploy AWS infrastructure (each project)
+# Or use the GitHub Actions deploy workflow for automated deployment
+```
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Smart Contracts | Solidity ^0.8.26, OpenZeppelin v5, Hardhat |
 | Backend | AWS Lambda, API Gateway, DynamoDB, SNS, EventBridge |
-| Frontend | Vanilla HTML/CSS/JS (S3 + CloudFront) |
+| Frontend | React 18, ethers.js v6, MetaMask (S3 + CloudFront) |
 | Blockchain | Ethereum (Sepolia testnet), ethers.js v6 |
 | Infrastructure | AWS SAM / CloudFormation |
+| CI/CD | GitHub Actions (test + deploy) |
 
 ## Repository Structure
 
 ```
 nextgen-economy/
+├── .github/workflows/
+│   ├── ci.yml                          # Test all projects on PR
+│   └── deploy.yml                      # Deploy contracts + infra + frontend
+├── scripts/
+│   └── ssm-store.js                    # Store contract addresses in SSM
 ├── CLAUDE.md                           # Development guidelines & patterns
 ├── REFERENCE-INDEX.md                  # Ethereum reference material index
 ├── PROJECT-STRUCTURE.md                # Recommended layout template
@@ -103,17 +188,29 @@ nextgen-economy/
     │   │   ├── sentinel/               # Core modules + interfaces
     │   │   └── examples/               # Example vault contracts
     │   ├── test/sentinel/              # Hardhat tests
-    │   ├── scripts/                    # Compile & test scripts
-    │   ├── hardhat.config.js
+    │   ├── scripts/                    # Compile, test & deploy scripts
     │   └── package.json
-    └── nge-sentinel-monitor/           # AWS serverless backend
+    ├── nge-sentinel-monitor/           # AWS serverless monitoring
+    │   ├── src/lambdas/                # Event poller, heartbeat, API
+    │   ├── frontend/                   # Static dashboard
+    │   ├── template.yaml               # SAM/CloudFormation template
+    │   └── package.json
+    ├── nge-iot/                        # Blockchain-IoT primitives
+    │   ├── contracts/iot/              # DeviceRegistry (ERC-721) + DataAnchor
+    │   ├── scripts/                    # Compile, test & deploy scripts
+    │   ├── aws/                        # Lambda + IoT Rules + CloudFormation
+    │   └── package.json
+    ├── nge-token/                      # ERC-20 platform token
+    │   ├── contracts/token/            # NGEToken (abstract) + examples
+    │   ├── scripts/                    # Compile, test & deploy scripts
+    │   ├── aws/                        # Lambda + API Gateway + CloudFormation
+    │   └── package.json
+    └── nge-frontend/                   # React platform UI
         ├── src/
-        │   ├── lambdas/                # Event poller, heartbeat monitor, API
-        │   ├── lib/                    # Shared utilities
+        │   ├── pages/                  # Dashboard, Token, Devices, Governance
+        │   ├── hooks/                  # useWallet, useTokenContract
         │   └── abi/                    # Contract ABIs
-        ├── frontend/                   # Static dashboard
-        ├── tests/                      # Unit tests
-        ├── template.yaml               # SAM/CloudFormation template
+        ├── aws/cloudformation/         # S3 + CloudFront hosting
         └── package.json
 ```
 

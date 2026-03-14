@@ -1,0 +1,115 @@
+import React from "react";
+import { NavLink } from "react-router-dom";
+import { truncateAddress } from "../utils/config";
+
+const navStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "16px 32px",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--bg-card)",
+};
+
+const logoStyle = {
+  fontSize: "18px",
+  fontWeight: 700,
+  color: "var(--text)",
+  textDecoration: "none",
+};
+
+const linksStyle = {
+  display: "flex",
+  gap: "24px",
+  alignItems: "center",
+};
+
+const linkStyle = {
+  color: "var(--text-muted)",
+  textDecoration: "none",
+  fontSize: "14px",
+  fontWeight: 500,
+  padding: "6px 12px",
+  borderRadius: "6px",
+  transition: "all 0.2s",
+};
+
+const activeLinkStyle = {
+  ...linkStyle,
+  color: "var(--accent)",
+  background: "rgba(59, 130, 246, 0.1)",
+};
+
+const walletStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+};
+
+const addressStyle = {
+  fontFamily: '"SF Mono", "Fira Code", monospace',
+  fontSize: "13px",
+  color: "var(--text-muted)",
+  background: "var(--bg)",
+  padding: "6px 12px",
+  borderRadius: "6px",
+  border: "1px solid var(--border)",
+};
+
+export default function Navbar({ account, chainId, isCorrectChain, onConnect, onDisconnect, onSwitchChain }) {
+  return (
+    <nav style={navStyle}>
+      <NavLink to="/" style={logoStyle}>
+        NGE
+      </NavLink>
+
+      <div style={linksStyle}>
+        <NavLink
+          to="/"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+          end
+        >
+          Dashboard
+        </NavLink>
+        <NavLink
+          to="/token"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Token
+        </NavLink>
+        <NavLink
+          to="/devices"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Devices
+        </NavLink>
+        <NavLink
+          to="/governance"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Governance
+        </NavLink>
+      </div>
+
+      <div style={walletStyle}>
+        {account ? (
+          <>
+            {!isCorrectChain && (
+              <button className="btn-outline" onClick={onSwitchChain} style={{ fontSize: "12px", padding: "6px 12px" }}>
+                Wrong Network
+              </button>
+            )}
+            <span style={addressStyle}>{truncateAddress(account)}</span>
+            <button className="btn-outline" onClick={onDisconnect} style={{ fontSize: "12px", padding: "6px 12px" }}>
+              Disconnect
+            </button>
+          </>
+        ) : (
+          <button className="btn-primary" onClick={onConnect}>
+            Connect Wallet
+          </button>
+        )}
+      </div>
+    </nav>
+  );
+}

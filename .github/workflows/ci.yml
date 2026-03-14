@@ -1,0 +1,128 @@
+# CI — Test all projects on every pull request and push to main.
+#
+# Runs compile + test for each smart contract project in parallel.
+# Uses the offline compile.js/test.js scripts since Hardhat needs
+# a native solc download that isn't cached by default.
+#
+# Free Tier: GitHub Actions gives 2,000 minutes/month for private repos
+# (unlimited for public repos). This workflow runs ~5 min per trigger.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  # ─── Smart Contract Tests ───────────────────────────────
+  test-sentinel:
+    name: Test nge-sentinel
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/nge-sentinel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-sentinel/package-lock.json
+      - run: npm ci
+      - name: Compile (offline)
+        run: node scripts/compile.js
+      - name: Start Hardhat node
+        run: npx hardhat node &
+      - name: Wait for node
+        run: sleep 3
+      - name: Run tests
+        run: node scripts/test.js
+
+  test-iot:
+    name: Test nge-iot
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/nge-iot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-iot/package-lock.json
+      - run: npm ci
+      - name: Compile (offline)
+        run: node scripts/compile.js
+      - name: Start Hardhat node
+        run: npx hardhat node &
+      - name: Wait for node
+        run: sleep 3
+      - name: Run tests
+        run: node scripts/test.js
+
+  test-token:
+    name: Test nge-token
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/nge-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-token/package-lock.json
+      - run: npm ci
+      - name: Compile (offline)
+        run: node scripts/compile.js
+      - name: Start Hardhat node
+        run: npx hardhat node &
+      - name: Wait for node
+        run: sleep 3
+      - name: Run tests
+        run: node scripts/test.js
+
+  test-monitor:
+    name: Test nge-sentinel-monitor
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/nge-sentinel-monitor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-sentinel-monitor/package-lock.json
+      - run: npm ci
+      - name: Run tests
+        run: npm test
+
+  # ─── Frontend Build ────────────────────────────────────
+  build-frontend:
+    name: Build nge-frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/nge-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: projects/nge-frontend/package-lock.json
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: projects/nge-frontend/build/
+          retention-days: 7

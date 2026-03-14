@@ -1,0 +1,17 @@
+{
+  "ruleDescription": "Routes batched sensor data (accumulated via SQS) to the blockchain DataAnchor Lambda for gas-efficient batch anchoring.",
+  "sql": "SELECT topic(3) AS thingName, payloads FROM 'nge/devices/+/data/batch'",
+  "actions": [
+    {
+      "lambda": {
+        "functionArn": "${AnchorDataLambdaArn}"
+      }
+    }
+  ],
+  "errorAction": {
+    "sqs": {
+      "queueUrl": "${DeadLetterQueueUrl}",
+      "roleArn": "${IoTRuleErrorRoleArn}"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "ruleDescription": "Routes device registration requests from AWS IoT Core to the blockchain DeviceRegistry Lambda.",
+  "sql": "SELECT thingName, ownerAddress, firmwareHash, metadataUri FROM 'nge/devices/register'",
+  "actions": [
+    {
+      "lambda": {
+        "functionArn": "${RegisterDeviceLambdaArn}"
+      }
+    }
+  ],
+  "errorAction": {
+    "sns": {
+      "targetArn": "${ErrorNotificationTopicArn}",
+      "roleArn": "${IoTRuleErrorRoleArn}",
+      "messageFormat": "JSON"
+    }
+  }
+}
