@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Token from "./pages/Token";
 import Devices from "./pages/Devices";
 import Governance from "./pages/Governance";
+import Onboard from "./pages/Onboard";
 
 const layoutStyle = {
   maxWidth: "1200px",
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/token" element={<Token wallet={wallet} />} />
           <Route path="/devices" element={<Devices wallet={wallet} />} />
           <Route path="/governance" element={<Governance wallet={wallet} />} />
+          <Route path="/onboard" element={<Onboard wallet={wallet} />} />
         </Routes>
       </main>
     </div>

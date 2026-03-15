@@ -108,6 +108,12 @@ export default function Navbar({ account, chainId, isCorrectChain, onConnect, on
           Devices
         </NavLink>
         <NavLink
+          to="/onboard"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Onboard
+        </NavLink>
+        <NavLink
           to="/governance"
           style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
         >
