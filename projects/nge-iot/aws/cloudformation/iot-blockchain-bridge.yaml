@@ -35,6 +35,19 @@ Parameters:
     Type: String
     Description: Email for error notifications
 
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID for JWT issuer (from cognito-auth stack export)
+    Default: ''
+
+  CognitoClientId:
+    Type: String
+    Description: Cognito User Pool Client ID for JWT audience validation
+    Default: ''
+
+Conditions:
+  HasAuth: !Not [!Equals [!Ref CognitoUserPoolId, '']]
+
 # ──────────────────────────────────────────────
 #  Resources
 # ──────────────────────────────────────────────
@@ -276,7 +289,7 @@ Resources:
       RuleName: !Sub nge_device_registration_${Environment}
       TopicRulePayload:
         Description: Routes device registration from IoT Core to blockchain
-        Sql: "SELECT thingName, ownerAddress, firmwareHash, metadataUri FROM 'nge/devices/register'"
+        Sql: "SELECT thingName, ownerAddress, firmwareHash, metadataUri, tenantId FROM 'nge/devices/register'"
         Actions:
           - Lambda:
               FunctionArn: !GetAtt RegisterDeviceLambda.Arn
@@ -336,6 +349,24 @@ Resources:
           - GET
         AllowHeaders:
           - Content-Type
+          - Authorization
+
+  # ─── JWT Authorizer (Cognito) ───
+  # Validates Bearer tokens from the Cognito User Pool.
+  # Only created when UserPoolArn is provided.
+
+  VerifyApiAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Condition: HasAuth
+    Properties:
+      ApiId: !Ref VerifyApi
+      AuthorizerType: JWT
+      Name: !Sub nge-iot-cognito-authorizer-${Environment}
+      IdentitySource: $request.header.Authorization
+      JwtConfiguration:
+        Audience:
+          - !Ref CognitoClientId
+        Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
 
   VerifyApiIntegration:
     Type: AWS::ApiGatewayV2::Integration

@@ -15,6 +15,8 @@
  */
 const { ethers } = require("ethers");
 const { DynamoDBClient, GetItemCommand } = require("@aws-sdk/client-dynamodb");
+// Deployed via Lambda Layer: nge-auth (see cognito-auth.yaml)
+const { extractTenantContext } = require("nge-auth/authMiddleware");
 
 const TOKEN_ABI = [
   "function balanceOf(address account) external view returns (uint256)",
@@ -37,6 +39,12 @@ function getProvider() {
 }
 
 exports.handler = async (event) => {
+  // Extract tenant context from Cognito JWT (injected by API Gateway authorizer)
+  const tenant = extractTenantContext(event);
+  if (tenant.tenantId) {
+    console.log(`Tenant: ${tenant.tenantId}, user: ${tenant.email}`);
+  }
+
   const params = event.queryStringParameters || {};
   const { address, onchain } = params;
 
@@ -63,6 +71,7 @@ exports.handler = async (event) => {
           delegate: dbResult.Item.delegate?.S || ethers.ZeroAddress,
           updatedAt: dbResult.Item.updatedAt.S,
           source: "cache",
+          ...(tenant.tenantId && { tenantId: tenant.tenantId }),
         });
       }
     } catch {
@@ -92,6 +101,7 @@ exports.handler = async (event) => {
     votingPowerFormatted: ethers.formatEther(votingPower),
     delegate,
     source: "onchain",
+    ...(tenant.tenantId && { tenantId: tenant.tenantId }),
   });
 };
 

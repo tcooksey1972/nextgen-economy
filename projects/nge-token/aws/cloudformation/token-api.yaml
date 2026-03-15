@@ -30,6 +30,19 @@ Parameters:
     Type: String
     Description: Email for error notifications
 
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID for JWT issuer (from cognito-auth stack export)
+    Default: ''
+
+  CognitoClientId:
+    Type: String
+    Description: Cognito User Pool Client ID for JWT audience validation
+    Default: ''
+
+Conditions:
+  HasAuth: !Not [!Equals [!Ref CognitoUserPoolId, '']]
+
 # ──────────────────────────────────────────────
 #  Resources
 # ──────────────────────────────────────────────
@@ -255,6 +268,24 @@ Resources:
           - GET
         AllowHeaders:
           - Content-Type
+          - Authorization
+
+  # ─── JWT Authorizer (Cognito) ───
+  # Validates Bearer tokens from the Cognito User Pool.
+  # Only created when CognitoUserPoolId is provided.
+
+  TokenApiAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Condition: HasAuth
+    Properties:
+      ApiId: !Ref TokenApi
+      AuthorizerType: JWT
+      Name: !Sub nge-token-cognito-authorizer-${Environment}
+      IdentitySource: $request.header.Authorization
+      JwtConfiguration:
+        Audience:
+          - !Ref CognitoClientId
+        Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
 
   TokenApiStage:
     Type: AWS::ApiGatewayV2::Stage
@@ -279,6 +310,8 @@ Resources:
       ApiId: !Ref TokenApi
       RouteKey: GET /balance
       Target: !Sub integrations/${BalanceIntegration}
+      AuthorizationType: !If [HasAuth, JWT, NONE]
+      AuthorizerId: !If [HasAuth, !Ref TokenApiAuthorizer, !Ref 'AWS::NoValue']
 
   TransfersIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -294,6 +327,8 @@ Resources:
       ApiId: !Ref TokenApi
       RouteKey: GET /transfers
       Target: !Sub integrations/${TransfersIntegration}
+      AuthorizationType: !If [HasAuth, JWT, NONE]
+      AuthorizerId: !If [HasAuth, !Ref TokenApiAuthorizer, !Ref 'AWS::NoValue']
 
   TokenInfoIntegration:
     Type: AWS::ApiGatewayV2::Integration

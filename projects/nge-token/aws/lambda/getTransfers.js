@@ -13,10 +13,18 @@
  */
 const { ethers } = require("ethers");
 const { DynamoDBClient, QueryCommand } = require("@aws-sdk/client-dynamodb");
+// Deployed via Lambda Layer: nge-auth (see cognito-auth.yaml)
+const { extractTenantContext } = require("nge-auth/authMiddleware");
 
 const dynamodb = new DynamoDBClient({});
 
 exports.handler = async (event) => {
+  // Extract tenant context from Cognito JWT (injected by API Gateway authorizer)
+  const tenant = extractTenantContext(event);
+  if (tenant.tenantId) {
+    console.log(`Tenant: ${tenant.tenantId}, user: ${tenant.email}`);
+  }
+
   const params = event.queryStringParameters || {};
   const { address, limit: limitStr, lastKey } = params;
 
@@ -53,6 +61,7 @@ exports.handler = async (event) => {
     address: checksumAddr,
     transfers,
     count: transfers.length,
+    ...(tenant.tenantId && { tenantId: tenant.tenantId }),
   });
 };
 

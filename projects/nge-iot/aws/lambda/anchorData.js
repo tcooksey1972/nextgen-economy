@@ -59,7 +59,13 @@ async function getSignerAndProvider() {
  * @param {string} thingName - AWS IoT Thing name
  * @returns {number} On-chain device ID
  */
-async function resolveDeviceId(thingName) {
+/**
+ * Resolves an AWS IoT Thing name to the on-chain device ID and tenantId via DynamoDB.
+ *
+ * @param {string} thingName - AWS IoT Thing name
+ * @returns {{ deviceId: number, tenantId: string }} On-chain device ID and tenant
+ */
+async function resolveDevice(thingName) {
   const result = await dynamodb.send(
     new GetItemCommand({
       TableName: process.env.DYNAMODB_TABLE,
@@ -71,7 +77,10 @@ async function resolveDeviceId(thingName) {
     throw new Error(`Unknown device: ${thingName}. Register it first.`);
   }
 
-  return Number(result.Item.deviceId.N);
+  return {
+    deviceId: Number(result.Item.deviceId.N),
+    tenantId: result.Item.tenantId?.S || null,
+  };
 }
 
 /**
@@ -98,7 +107,7 @@ exports.handler = async (event) => {
     throw new Error("Missing required field: thingName");
   }
 
-  const deviceId = await resolveDeviceId(thingName);
+  const { deviceId, tenantId } = await resolveDevice(thingName);
   const { signer } = await getSignerAndProvider();
   const anchor = new ethers.Contract(
     process.env.CONTRACT_ADDRESS,
@@ -110,10 +119,10 @@ exports.handler = async (event) => {
 
   if (payloads && Array.isArray(payloads) && payloads.length > 0) {
     // Batch mode
-    result = await handleBatch(anchor, deviceId, thingName, payloads);
+    result = await handleBatch(anchor, deviceId, thingName, payloads, tenantId);
   } else if (payload) {
     // Single mode
-    result = await handleSingle(anchor, deviceId, thingName, payload);
+    result = await handleSingle(anchor, deviceId, thingName, payload, tenantId);
   } else {
     throw new Error("Missing required field: payload or payloads");
   }
@@ -124,7 +133,7 @@ exports.handler = async (event) => {
 /**
  * Anchors a single sensor reading on-chain.
  */
-async function handleSingle(anchor, deviceId, thingName, payload) {
+async function handleSingle(anchor, deviceId, thingName, payload, tenantId) {
   // Hash the canonical JSON representation of the payload
   const canonical = JSON.stringify(payload, Object.keys(payload).sort());
   const dataHash = ethers.keccak256(ethers.toUtf8Bytes(canonical));
@@ -133,20 +142,20 @@ async function handleSingle(anchor, deviceId, thingName, payload) {
   const receipt = await tx.wait();
 
   // Store in DynamoDB for fast off-chain queries
+  const item = {
+    dataHash: { S: dataHash },
+    deviceId: { N: String(deviceId) },
+    thingName: { S: thingName },
+    payload: { S: canonical },
+    transactionHash: { S: receipt.hash },
+    blockNumber: { N: String(receipt.blockNumber) },
+    anchoredAt: { S: new Date().toISOString() },
+    type: { S: "SINGLE" },
+  };
+  if (tenantId) item.tenantId = { S: tenantId };
+
   await dynamodb.send(
-    new PutItemCommand({
-      TableName: process.env.ANCHORS_TABLE,
-      Item: {
-        dataHash: { S: dataHash },
-        deviceId: { N: String(deviceId) },
-        thingName: { S: thingName },
-        payload: { S: canonical },
-        transactionHash: { S: receipt.hash },
-        blockNumber: { N: String(receipt.blockNumber) },
-        anchoredAt: { S: new Date().toISOString() },
-        type: { S: "SINGLE" },
-      },
-    })
+    new PutItemCommand({ TableName: process.env.ANCHORS_TABLE, Item: item })
   );
 
   console.log(`Data anchored: device=${deviceId}, hash=${dataHash}, tx=${receipt.hash}`);
@@ -162,7 +171,7 @@ async function handleSingle(anchor, deviceId, thingName, payload) {
 /**
  * Anchors a batch of sensor readings on-chain as a single root hash.
  */
-async function handleBatch(anchor, deviceId, thingName, payloads) {
+async function handleBatch(anchor, deviceId, thingName, payloads, tenantId) {
   const dataHashes = payloads.map((p) => {
     const canonical = JSON.stringify(p, Object.keys(p).sort());
     return ethers.keccak256(ethers.toUtf8Bytes(canonical));
@@ -176,21 +185,21 @@ async function handleBatch(anchor, deviceId, thingName, payloads) {
   const batchRoot = ethers.keccak256(ethers.solidityPacked(types, dataHashes));
 
   // Store batch record
+  const item = {
+    dataHash: { S: batchRoot },
+    deviceId: { N: String(deviceId) },
+    thingName: { S: thingName },
+    individualHashes: { L: dataHashes.map((h) => ({ S: h })) },
+    count: { N: String(payloads.length) },
+    transactionHash: { S: receipt.hash },
+    blockNumber: { N: String(receipt.blockNumber) },
+    anchoredAt: { S: new Date().toISOString() },
+    type: { S: "BATCH" },
+  };
+  if (tenantId) item.tenantId = { S: tenantId };
+
   await dynamodb.send(
-    new PutItemCommand({
-      TableName: process.env.ANCHORS_TABLE,
-      Item: {
-        dataHash: { S: batchRoot },
-        deviceId: { N: String(deviceId) },
-        thingName: { S: thingName },
-        individualHashes: { L: dataHashes.map((h) => ({ S: h })) },
-        count: { N: String(payloads.length) },
-        transactionHash: { S: receipt.hash },
-        blockNumber: { N: String(receipt.blockNumber) },
-        anchoredAt: { S: new Date().toISOString() },
-        type: { S: "BATCH" },
-      },
-    })
+    new PutItemCommand({ TableName: process.env.ANCHORS_TABLE, Item: item })
   );
 
   console.log(`Batch anchored: device=${deviceId}, root=${batchRoot}, count=${payloads.length}, tx=${receipt.hash}`);
