@@ -441,7 +441,43 @@ aws cloudformation describe-stacks --stack-name nge-frontend-dev \
 | `FrontendUrl` | CloudFront domain (your site URL) |
 | `DistributionId` | For cache invalidation |
 
-### 5.2 Token API Stack
+### 5.2 Authentication Stack (Cognito)
+
+Creates the Cognito User Pool, app client, tenant DynamoDB table, and post-confirmation Lambda for tenant auto-provisioning. Deploy this before the Token API and IoT Bridge if you want JWT-based multi-tenant auth.
+
+```bash
+aws cloudformation deploy \
+  --template-file projects/nge-auth/aws/cloudformation/cognito-auth.yaml \
+  --stack-name nge-auth-dev \
+  --parameter-overrides \
+    Environment=dev \
+    CallbackUrl=http://localhost:3000 \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --no-fail-on-empty-changeset \
+  --region us-east-1
+```
+
+**What gets created:**
+- Cognito User Pool (`nge-users-dev`) with email sign-up
+- App client for the frontend (implicit OAuth flow)
+- DynamoDB table `nge-tenants-dev` for tenant metadata
+- Post-confirmation Lambda that auto-creates tenants on sign-up
+
+**Capture the outputs — you'll need these for the Token API and IoT Bridge stacks:**
+```bash
+USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name nge-auth-dev \
+  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
+
+CLIENT_ID=$(aws cloudformation describe-stacks --stack-name nge-auth-dev \
+  --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text)
+
+echo "User Pool ID: $USER_POOL_ID"
+echo "Client ID:    $CLIENT_ID"
+```
+
+> **Note:** Auth is optional. If you skip this step, the Token API and IoT Bridge stacks deploy without JWT authorization (all routes are public). You can add auth later by redeploying with the `CognitoUserPoolId` and `CognitoClientId` parameters.
+
+### 5.3 Token API Stack
 
 Creates Lambda functions, DynamoDB tables, API Gateway, and an event poller for the NGE token.
 
@@ -452,10 +488,14 @@ aws cloudformation deploy \
   --parameter-overrides \
     Environment=dev \
     NotificationEmail=ops@cloudcreationsllc.com \
+    CognitoUserPoolId=$USER_POOL_ID \
+    CognitoClientId=$CLIENT_ID \
   --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset \
   --region us-east-1
 ```
+
+> Omit `CognitoUserPoolId` and `CognitoClientId` to deploy without auth.
 
 **What gets created:**
 - 3 DynamoDB tables: `nge-token-balances-dev`, `nge-token-transfers-dev`, `nge-token-metadata-dev`
@@ -472,7 +512,7 @@ aws cloudformation describe-stacks --stack-name nge-token-api-dev \
 # Example: https://abc123.execute-api.us-east-1.amazonaws.com/dev
 ```
 
-### 5.3 Sentinel Monitor Stack (SAM)
+### 5.4 Sentinel Monitor Stack (SAM)
 
 Creates the on-chain event monitor with a dashboard.
 
@@ -521,7 +561,7 @@ aws cloudformation describe-stacks --stack-name nge-sentinel-monitor-dev \
   --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text
 ```
 
-### 5.4 IoT Bridge Stack
+### 5.5 IoT Bridge Stack
 
 Creates the AWS IoT Core integration with the blockchain.
 
@@ -547,10 +587,14 @@ aws cloudformation deploy \
     Environment=dev \
     SignerSecretArn=$SIGNER_ARN \
     NotificationEmail=ops@cloudcreationsllc.com \
+    CognitoUserPoolId=$USER_POOL_ID \
+    CognitoClientId=$CLIENT_ID \
   --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset \
   --region us-east-1
 ```
+
+> Omit `CognitoUserPoolId` and `CognitoClientId` to deploy without auth.
 
 **What gets created:**
 - 2 DynamoDB tables: `nge-iot-devices-dev`, `nge-iot-anchors-dev`
@@ -560,7 +604,7 @@ aws cloudformation deploy \
 - SQS dead-letter queue
 - SNS error topic
 
-### 5.5 Confirm All Stacks
+### 5.6 Confirm All Stacks
 
 ```bash
 aws cloudformation list-stacks \
@@ -572,6 +616,7 @@ aws cloudformation list-stacks \
 Expected output:
 ```
 | nge-frontend-dev          | CREATE_COMPLETE | 2026-... |
+| nge-auth-dev              | CREATE_COMPLETE | 2026-... |
 | nge-token-api-dev         | CREATE_COMPLETE | 2026-... |
 | nge-sentinel-monitor-dev  | CREATE_COMPLETE | 2026-... |
 | nge-iot-bridge-dev        | CREATE_COMPLETE | 2026-... |
@@ -1019,9 +1064,10 @@ aws cloudwatch put-metric-alarm \
 - [ ] RPC URL stored in SSM Parameter Store
 - [ ] IoT signer key stored in Secrets Manager
 - [ ] Frontend hosting stack deployed
-- [ ] Token API stack deployed
+- [ ] Auth (Cognito) stack deployed (optional, for multi-tenant)
+- [ ] Token API stack deployed (with Cognito params if auth enabled)
 - [ ] Sentinel Monitor stack deployed (SAM)
-- [ ] IoT Bridge stack deployed
+- [ ] IoT Bridge stack deployed (with Cognito params if auth enabled)
 - [ ] Sentinel dashboard uploaded to S3
 - [ ] Frontend `.env` updated with API endpoints and contract addresses
 - [ ] Frontend built and uploaded to S3
@@ -1056,6 +1102,7 @@ aws cloudwatch put-metric-alarm \
 | Component | Dev | Staging | Prod |
 |-----------|-----|---------|------|
 | Frontend | `nge-frontend-dev` | `nge-frontend-staging` | `nge-frontend-prod` |
+| Auth (Cognito) | `nge-auth-dev` | `nge-auth-staging` | `nge-auth-prod` |
 | Token API | `nge-token-api-dev` | `nge-token-api-staging` | `nge-token-api-prod` |
 | Sentinel Monitor | `nge-sentinel-monitor-dev` | `nge-sentinel-monitor-staging` | `nge-sentinel-monitor-prod` |
 | IoT Bridge | `nge-iot-bridge-dev` | `nge-iot-bridge-staging` | `nge-iot-bridge-prod` |
@@ -1080,6 +1127,9 @@ aws cloudwatch put-metric-alarm \
 | `projects/nge-sentinel/scripts/deploy.js` | Sentinel contract deployment |
 | `projects/nge-token/scripts/deploy.js` | Token contract deployment |
 | `projects/nge-iot/scripts/deploy.js` | IoT contract deployment |
+| `projects/nge-auth/aws/cloudformation/cognito-auth.yaml` | Cognito auth stack |
+| `projects/nge-auth/src/authMiddleware.js` | JWT tenant extraction middleware |
+| `projects/nge-auth/src/tenantScope.js` | Tenant-scoped DynamoDB helpers |
 | `projects/nge-token/aws/cloudformation/token-api.yaml` | Token API stack |
 | `projects/nge-iot/aws/cloudformation/iot-blockchain-bridge.yaml` | IoT bridge stack |
 | `projects/nge-sentinel-monitor/template.yaml` | Sentinel monitor stack |
