@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { Link } from "react-router-dom";
 import config, { truncateAddress, addressUrl } from "../utils/config";
+import { getTokenInfo, getBalance } from "../utils/api";
 import TOKEN_ABI from "../abi/NGEToken.json";
 import DEVICE_ABI from "../abi/DeviceRegistry.json";
 
@@ -9,9 +10,10 @@ import DEVICE_ABI from "../abi/DeviceRegistry.json";
  * Dashboard — Platform overview with key metrics from all contracts.
  *
  * Shows: token supply, device count, wallet balance, and quick actions.
- * All data comes from on-chain view calls (read-only, no gas).
+ * Data is fetched from the serverless API first (fast, cached), with
+ * on-chain fallback if the API is not configured.
  */
-export default function Dashboard({ wallet }) {
+export default function Dashboard({ wallet, auth }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -21,36 +23,51 @@ export default function Dashboard({ wallet }) {
 
       setLoading(true);
       const data = {};
+      const tokens = auth?.tokens || null;
 
-      // Token stats
+      // Token stats — try API first, fall back to on-chain
       if (config.contracts.token) {
         try {
-          const token = new ethers.Contract(config.contracts.token, TOKEN_ABI, wallet.provider);
-          const [totalSupply, supplyCap, paused] = await Promise.all([
-            token.totalSupply(),
-            token.supplyCap(),
-            token.paused(),
-          ]);
-          data.token = {
-            totalSupply: ethers.formatEther(totalSupply),
-            supplyCap: supplyCap === 0n ? "Unlimited" : ethers.formatEther(supplyCap),
-            paused,
-          };
-
-          if (wallet.account) {
-            const [balance, votes] = await Promise.all([
-              token.balanceOf(wallet.account),
-              token.getVotes(wallet.account),
+          if (config.api.token) {
+            const info = await getTokenInfo(tokens);
+            data.token = {
+              totalSupply: info.totalSupply || "0",
+              supplyCap: info.supplyCap || "Unlimited",
+              paused: info.paused || false,
+            };
+            if (wallet.account) {
+              const bal = await getBalance(wallet.account, tokens);
+              data.token.balance = bal.balance || "0";
+              data.token.votingPower = bal.votingPower || "0";
+            }
+          } else {
+            // On-chain fallback
+            const token = new ethers.Contract(config.contracts.token, TOKEN_ABI, wallet.provider);
+            const [totalSupply, supplyCap, paused] = await Promise.all([
+              token.totalSupply(),
+              token.supplyCap(),
+              token.paused(),
             ]);
-            data.token.balance = ethers.formatEther(balance);
-            data.token.votingPower = ethers.formatEther(votes);
+            data.token = {
+              totalSupply: ethers.formatEther(totalSupply),
+              supplyCap: supplyCap === 0n ? "Unlimited" : ethers.formatEther(supplyCap),
+              paused,
+            };
+            if (wallet.account) {
+              const [balance, votes] = await Promise.all([
+                token.balanceOf(wallet.account),
+                token.getVotes(wallet.account),
+              ]);
+              data.token.balance = ethers.formatEther(balance);
+              data.token.votingPower = ethers.formatEther(votes);
+            }
           }
         } catch {
           data.token = null;
         }
       }
 
-      // IoT stats
+      // IoT stats (on-chain only — no IoT API for listing yet)
       if (config.contracts.iot) {
         try {
           const registry = new ethers.Contract(config.contracts.iot, DEVICE_ABI, wallet.provider);
@@ -81,7 +98,7 @@ export default function Dashboard({ wallet }) {
     }
 
     fetchStats();
-  }, [wallet.provider, wallet.account]);
+  }, [wallet.provider, wallet.account, auth?.tokens]);
 
   if (!wallet.account) {
     return (

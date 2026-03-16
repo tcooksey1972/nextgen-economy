@@ -73,6 +73,23 @@ Two example deployments: `SimpleNGEToken` (Ownable) and `SentinelNGEToken` (tran
 - **50+ passing tests** across 2 test suites
 - AWS Free Tier optimized ($0.00/month for dev usage)
 
+### [NGE Auth](projects/nge-auth/) — Authentication & Multi-Tenancy
+
+Cognito-based authentication with tenant isolation for the AnchorProof compliance product.
+
+| Component | Description |
+|-----------|-------------|
+| **Cognito User Pool** | User sign-up/sign-in with email verification, JWT tokens |
+| **Tenant Auto-Provisioning** | Post-confirmation Lambda creates a tenant on first sign-up |
+| **Auth Middleware** | Extracts tenantId from JWT claims for Lambda handlers |
+| **Tenant Scope Helpers** | DynamoDB helpers for tenant-isolated reads and writes |
+
+The Cognito authorizer integrates with both the IoT and Token API Gateways via JWT validation. When deployed with auth parameters, API routes enforce tenant-scoped access.
+
+- **Cognito** — 50K MAU free (always free tier)
+- **DynamoDB** tenant table for plan/limit metadata
+- Conditional deployment — stacks work with or without auth enabled
+
 ### [NGE Frontend](projects/nge-frontend/) — Platform UI
 
 React single-page application with MetaMask wallet integration.
@@ -205,6 +222,9 @@ nextgen-economy/
     │   ├── scripts/                    # Compile, test & deploy scripts
     │   ├── aws/                        # Lambda + API Gateway + CloudFormation
     │   └── package.json
+    ├── nge-auth/                       # Authentication & multi-tenancy
+    │   ├── aws/cloudformation/         # Cognito User Pool + tenant table
+    │   └── src/                        # authMiddleware.js, tenantScope.js
     └── nge-frontend/                   # React platform UI
         ├── src/
         │   ├── pages/                  # Dashboard, Token, Devices, Governance

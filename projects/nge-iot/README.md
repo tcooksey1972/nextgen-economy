@@ -199,10 +199,12 @@ The CloudFormation template (`aws/cloudformation/iot-blockchain-bridge.yaml`) de
 - Lambda functions (register, anchor, verify)
 - IoT Rules (MQTT → Lambda routing)
 - API Gateway (verification endpoint)
+- JWT authorizer (Cognito, optional)
 - IoT Thing Type and Policy
 - IAM roles (least-privilege)
 - SNS error notifications + SQS dead letter queue
 
+**Without auth (standalone):**
 ```bash
 aws cloudformation deploy \
   --template-file aws/cloudformation/iot-blockchain-bridge.yaml \
@@ -213,6 +215,38 @@ aws cloudformation deploy \
     NotificationEmail=alerts@example.com \
   --capabilities CAPABILITY_NAMED_IAM
 ```
+
+**With Cognito auth (recommended for multi-tenant):**
+```bash
+aws cloudformation deploy \
+  --template-file aws/cloudformation/iot-blockchain-bridge.yaml \
+  --stack-name nge-iot-dev \
+  --parameter-overrides \
+    Environment=dev \
+    SignerSecretArn=arn:aws:secretsmanager:us-east-1:123456789:secret:nge-iot-signer \
+    NotificationEmail=alerts@example.com \
+    CognitoUserPoolId=us-east-1_XXXXXXXXX \
+    CognitoClientId=abc123def456 \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+
+When `CognitoUserPoolId` is provided, the stack creates a JWT authorizer on the API Gateway. The `/verify` endpoint remains public (shareable verification links). See [nge-auth](../nge-auth/) for the Cognito stack that provides these values.
+
+### Authentication & Multi-Tenancy
+
+All DynamoDB records (devices and anchors) include a `tenantId` field for multi-tenant isolation.
+
+**How tenantId flows:**
+
+| Path | Source of tenantId | Description |
+|------|--------------------|-------------|
+| MQTT → `registerDevice` | MQTT payload `tenantId` field | Device registration requires tenantId in the message |
+| MQTT → `anchorData` | Device DynamoDB record | Resolved from the device's stored tenantId |
+| API → `verifyAnchor` | JWT claims (optional) | Logged for audit; endpoint is public |
+
+The `nge/devices/register` IoT Rule SQL includes `tenantId` in its SELECT, so devices must publish their tenant association in the registration message.
+
+Lambda handlers use `authMiddleware.extractTenantContext(event)` from [nge-auth](../nge-auth/) to read JWT claims when requests come through API Gateway.
 
 ### Environment Variables
 

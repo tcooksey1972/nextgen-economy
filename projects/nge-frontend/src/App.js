@@ -1,6 +1,7 @@
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 import useWallet from "./hooks/useWallet";
+import useAuth from "./hooks/useAuth";
 import Navbar from "./components/Navbar";
 import Landing from "./pages/Landing";
 import UseCases from "./pages/UseCases";
@@ -9,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Token from "./pages/Token";
 import Devices from "./pages/Devices";
 import Governance from "./pages/Governance";
+import Onboard from "./pages/Onboard";
 
 const layoutStyle = {
   maxWidth: "1200px",
@@ -18,6 +20,7 @@ const layoutStyle = {
 
 export default function App() {
   const wallet = useWallet();
+  const auth = useAuth();
 
   return (
     <div>
@@ -28,6 +31,7 @@ export default function App() {
         onConnect={wallet.connect}
         onDisconnect={wallet.disconnect}
         onSwitchChain={wallet.switchChain}
+        auth={auth}
       />
 
       {wallet.error && (
@@ -41,10 +45,11 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/use-cases" element={<UseCases />} />
           <Route path="/about" element={<About />} />
-          <Route path="/dashboard" element={<Dashboard wallet={wallet} />} />
-          <Route path="/token" element={<Token wallet={wallet} />} />
-          <Route path="/devices" element={<Devices wallet={wallet} />} />
-          <Route path="/governance" element={<Governance wallet={wallet} />} />
+          <Route path="/dashboard" element={<Dashboard wallet={wallet} auth={auth} />} />
+          <Route path="/token" element={<Token wallet={wallet} auth={auth} />} />
+          <Route path="/devices" element={<Devices wallet={wallet} auth={auth} />} />
+          <Route path="/governance" element={<Governance wallet={wallet} auth={auth} />} />
+          <Route path="/onboard" element={<Onboard wallet={wallet} auth={auth} />} />
         </Routes>
       </main>
     </div>

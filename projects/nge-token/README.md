@@ -186,6 +186,7 @@ processTransferEvent (Lambda)
 
 ### Deploy
 
+**Without auth (standalone):**
 ```bash
 aws cloudformation deploy \
   --template-file aws/cloudformation/token-api.yaml \
@@ -195,6 +196,33 @@ aws cloudformation deploy \
     NotificationEmail=alerts@example.com \
   --capabilities CAPABILITY_NAMED_IAM
 ```
+
+**With Cognito auth (recommended for multi-tenant):**
+```bash
+aws cloudformation deploy \
+  --template-file aws/cloudformation/token-api.yaml \
+  --stack-name nge-token-dev \
+  --parameter-overrides \
+    Environment=dev \
+    NotificationEmail=alerts@example.com \
+    CognitoUserPoolId=us-east-1_XXXXXXXXX \
+    CognitoClientId=abc123def456 \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+
+When `CognitoUserPoolId` is provided, the stack creates a JWT authorizer and protects `/balance` and `/transfers` routes. `/token-info` remains public. See [nge-auth](../nge-auth/) for the Cognito stack.
+
+### Authentication & Multi-Tenancy
+
+When the JWT authorizer is enabled, `getBalance` and `getTransfers` handlers extract tenant context from JWT claims via `authMiddleware.extractTenantContext(event)` from [nge-auth](../nge-auth/). The `tenantId` is logged for audit and included in API responses.
+
+| Endpoint | Auth (when enabled) | Reason |
+|----------|---------------------|--------|
+| `GET /balance` | JWT required | Tenant-scoped balance queries |
+| `GET /transfers` | JWT required | Tenant-scoped transfer history |
+| `GET /token-info` | Public | Token metadata is public information |
+
+The `processTransferEvent` Lambda runs on a schedule (not via API Gateway) and is unaffected by auth.
 
 ### Environment Variables
 

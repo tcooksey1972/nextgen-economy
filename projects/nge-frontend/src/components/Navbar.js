@@ -63,7 +63,16 @@ const addressStyle = {
   border: "1px solid var(--border)",
 };
 
-export default function Navbar({ account, chainId, isCorrectChain, onConnect, onDisconnect, onSwitchChain }) {
+const authBadgeStyle = {
+  fontSize: "12px",
+  color: "var(--text-muted)",
+  background: "rgba(34, 197, 94, 0.1)",
+  border: "1px solid rgba(34, 197, 94, 0.3)",
+  padding: "4px 10px",
+  borderRadius: "6px",
+};
+
+export default function Navbar({ account, chainId, isCorrectChain, onConnect, onDisconnect, onSwitchChain, auth }) {
   return (
     <nav style={navStyle}>
       <NavLink to="/" style={logoStyle}>
@@ -108,6 +117,12 @@ export default function Navbar({ account, chainId, isCorrectChain, onConnect, on
           Devices
         </NavLink>
         <NavLink
+          to="/onboard"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Onboard
+        </NavLink>
+        <NavLink
           to="/governance"
           style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
         >
@@ -116,6 +131,25 @@ export default function Navbar({ account, chainId, isCorrectChain, onConnect, on
       </div>
 
       <div style={walletStyle}>
+        {/* Auth status */}
+        {auth?.enabled && (
+          auth.isAuthenticated ? (
+            <>
+              <span style={authBadgeStyle}>{auth.user.email}</span>
+              <button className="btn-outline" onClick={auth.signOut} style={{ fontSize: "12px", padding: "6px 12px" }}>
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <NavLink to="/onboard">
+              <button className="btn-outline" style={{ fontSize: "12px", padding: "6px 12px" }}>
+                Sign In
+              </button>
+            </NavLink>
+          )
+        )}
+
+        {/* Wallet connection */}
         {account ? (
           <>
             {!isCorrectChain && (

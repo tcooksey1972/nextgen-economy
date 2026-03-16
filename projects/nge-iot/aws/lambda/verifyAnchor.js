@@ -27,6 +27,8 @@
  */
 const { ethers } = require("ethers");
 const { DynamoDBClient, GetItemCommand } = require("@aws-sdk/client-dynamodb");
+// Deployed via Lambda Layer: nge-auth (see cognito-auth.yaml)
+const { extractTenantContext } = require("nge-auth/authMiddleware");
 
 const ANCHOR_ABI = [
   "function isAnchored(bytes32 dataHash) external view returns (bool)",
@@ -54,6 +56,12 @@ function getProvider() {
  * @returns {Object} Verification result
  */
 exports.handler = async (event) => {
+  // Extract tenant context if present (public endpoint — auth is optional)
+  const tenant = extractTenantContext(event);
+  if (tenant.tenantId) {
+    console.log(`Authenticated verify: tenant=${tenant.tenantId}, user=${tenant.email}`);
+  }
+
   const params = event.queryStringParameters || {};
   let { dataHash, payload, onchain } = params;
 

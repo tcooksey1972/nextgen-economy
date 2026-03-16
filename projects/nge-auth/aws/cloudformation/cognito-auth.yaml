@@ -1,0 +1,272 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  NGE Authentication — Cognito User Pool with tenant isolation.
+  Provides user sign-up/sign-in, JWT tokens, and tenant-aware API authorization.
+  Designed for the IoT Compliance-as-a-Service product ("AnchorProof").
+  Free Tier: Cognito — 50K MAU free (always free for user pools without
+  advanced security features).
+
+# ──────────────────────────────────────────────
+#  Parameters
+# ──────────────────────────────────────────────
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment
+
+  CallbackUrl:
+    Type: String
+    Default: http://localhost:3000
+    Description: OAuth callback URL (CloudFront URL in prod)
+
+# ──────────────────────────────────────────────
+#  Resources
+# ──────────────────────────────────────────────
+
+Resources:
+
+  # ─── Cognito User Pool ───
+  # Free Tier: 50,000 MAU (monthly active users) — always free.
+  # No cost until you exceed 50K users or enable advanced security.
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub nge-users-${Environment}
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      MfaConfiguration: 'OFF'
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: false
+        - Name: tenantId
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MinLength: '1'
+            MaxLength: '64'
+        - Name: tenantName
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MinLength: '1'
+            MaxLength: '128'
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MinLength: '1'
+            MaxLength: '32'
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      UserPoolAddOns:
+        AdvancedSecurityMode: 'OFF'
+
+  # ─── User Pool Client (Frontend) ───
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub nge-frontend-${Environment}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs:
+        - !Ref CallbackUrl
+      LogoutURLs:
+        - !Ref CallbackUrl
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # ─── Tenant Table ───
+  # Maps tenantId to tenant metadata (name, plan, device limits).
+
+  TenantTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub nge-tenants-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: tenantId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: tenantId
+          KeyType: HASH
+
+  # ─── Post-Confirmation Lambda ───
+  # Auto-creates a tenant on first sign-up (self-service onboarding).
+  # If a user signs up without a tenantId, they get a new tenant created.
+
+  PostConfirmationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub nge-auth-post-confirm-${Environment}
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Timeout: 10
+      MemorySize: 128
+      Role: !GetAtt PostConfirmationRole.Arn
+      Environment:
+        Variables:
+          TENANT_TABLE: !Ref TenantTable
+          USER_POOL_ID: !Ref UserPool
+      Code:
+        ZipFile: |
+          const { DynamoDBClient, PutItemCommand, GetItemCommand } = require("@aws-sdk/client-dynamodb");
+          const { CognitoIdentityProviderClient, AdminUpdateUserAttributesCommand } = require("@aws-sdk/client-cognito-identity-provider");
+          const { randomUUID } = require("crypto");
+
+          const dynamodb = new DynamoDBClient({});
+          const cognito = new CognitoIdentityProviderClient({});
+
+          exports.handler = async (event) => {
+            console.log("PostConfirmation:", JSON.stringify(event));
+
+            const email = event.request.userAttributes.email;
+            let tenantId = event.request.userAttributes["custom:tenantId"];
+
+            // If user doesn't have a tenantId, create a new tenant
+            if (!tenantId) {
+              tenantId = randomUUID().slice(0, 8);
+              const tenantName = email.split("@")[0] + "'s Organization";
+
+              await dynamodb.send(new PutItemCommand({
+                TableName: process.env.TENANT_TABLE,
+                Item: {
+                  tenantId: { S: tenantId },
+                  name: { S: tenantName },
+                  plan: { S: "starter" },
+                  deviceLimit: { N: "10" },
+                  anchorsPerMonth: { N: "10000" },
+                  createdAt: { S: new Date().toISOString() },
+                  ownerEmail: { S: email },
+                },
+              }));
+
+              // Update the user's custom attributes with the new tenantId
+              await cognito.send(new AdminUpdateUserAttributesCommand({
+                UserPoolId: process.env.USER_POOL_ID,
+                Username: event.userName,
+                UserAttributes: [
+                  { Name: "custom:tenantId", Value: tenantId },
+                  { Name: "custom:tenantName", Value: tenantName },
+                  { Name: "custom:role", Value: "admin" },
+                ],
+              }));
+            }
+
+            return event;
+          };
+
+  PostConfirmationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub nge-auth-post-confirm-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAndCognito
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource: !GetAtt TenantTable.Arn
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminUpdateUserAttributes
+                Resource: !GetAtt UserPool.Arn
+
+  PostConfirmationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PostConfirmationLambda
+      Action: lambda:InvokeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
+  # Attach the trigger to the User Pool
+  UserPoolLambdaConfig:
+    Type: AWS::Cognito::UserPoolLambdaTrigger
+    DependsOn: PostConfirmationPermission
+    Properties:
+      UserPoolId: !Ref UserPool
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmationLambda.Arn
+
+# ──────────────────────────────────────────────
+#  Outputs
+# ──────────────────────────────────────────────
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub nge-auth-user-pool-id-${Environment}
+
+  UserPoolArn:
+    Description: Cognito User Pool ARN (for API Gateway authorizers)
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub nge-auth-user-pool-arn-${Environment}
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID (for frontend)
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub nge-auth-client-id-${Environment}
+
+  TenantTableName:
+    Description: DynamoDB table for tenant metadata
+    Value: !Ref TenantTable
+    Export:
+      Name: !Sub nge-auth-tenant-table-${Environment}
+
+  CognitoDomain:
+    Description: Configure hosted UI domain separately if needed
+    Value: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}

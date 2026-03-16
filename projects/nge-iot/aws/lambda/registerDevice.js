@@ -75,11 +75,15 @@ async function getSignerAndProvider() {
 exports.handler = async (event) => {
   console.log("RegisterDevice event:", JSON.stringify(event));
 
-  const { thingName, ownerAddress, firmwareHash, metadataUri } = event;
+  const { thingName, ownerAddress, firmwareHash, metadataUri, tenantId } = event;
 
   // Validate inputs
   if (!thingName || !ownerAddress || !firmwareHash || !metadataUri) {
     throw new Error("Missing required fields: thingName, ownerAddress, firmwareHash, metadataUri");
+  }
+
+  if (!tenantId) {
+    throw new Error("Missing required field: tenantId (must be provided via IoT Rule or onboarding)");
   }
 
   if (!ethers.isAddress(ownerAddress)) {
@@ -120,6 +124,7 @@ exports.handler = async (event) => {
         ownerAddress: { S: ownerAddress },
         firmwareHash: { S: firmwareHash },
         metadataUri: { S: metadataUri },
+        tenantId: { S: tenantId },
         transactionHash: { S: receipt.hash },
         registeredAt: { S: new Date().toISOString() },
         status: { S: "ACTIVE" },
