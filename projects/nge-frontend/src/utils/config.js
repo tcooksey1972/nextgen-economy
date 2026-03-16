@@ -26,6 +26,13 @@ const config = {
 
   // Block explorer
   explorerUrl: process.env.REACT_APP_EXPLORER_URL || "https://sepolia.etherscan.io",
+
+  // Cognito auth (optional — empty strings disable auth features)
+  cognito: {
+    userPoolId: process.env.REACT_APP_COGNITO_USER_POOL_ID || "",
+    clientId: process.env.REACT_APP_COGNITO_CLIENT_ID || "",
+    region: process.env.REACT_APP_COGNITO_REGION || "us-east-1",
+  },
 };
 
 /**

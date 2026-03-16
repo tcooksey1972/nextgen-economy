@@ -1,0 +1,25 @@
+{
+  "name": "nge-auth",
+  "version": "1.0.0",
+  "description": "Shared authentication middleware for NGE Lambda handlers — JWT tenant extraction and DynamoDB tenant scoping.",
+  "main": "src/authMiddleware.js",
+  "exports": {
+    ".": "./src/authMiddleware.js",
+    "./authMiddleware": "./src/authMiddleware.js",
+    "./tenantScope": "./src/tenantScope.js"
+  },
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "keywords": ["cognito", "jwt", "multi-tenant", "dynamodb", "lambda"],
+  "author": "Cloud Creations LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tcooksey1972/nextgen-economy.git",
+    "directory": "projects/nge-auth"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0"
+  }
+}

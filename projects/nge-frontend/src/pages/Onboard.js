@@ -4,19 +4,124 @@ import config, { txUrl } from "../utils/config";
 import DEVICE_ABI from "../abi/DeviceRegistry.json";
 
 /**
- * Device Onboarding Wizard — Step-by-step flow for registering new IoT devices.
+ * Onboard page — handles both platform sign-in/sign-up (Cognito) and
+ * device registration (on-chain via MetaMask).
  *
- * Steps:
- *   1. Enter device details (thing name, firmware hash, metadata URI)
- *   2. Review and confirm
- *   3. Submit transaction
- *   4. Success — show device ID and tx hash
- *
- * This page registers devices directly on-chain via MetaMask. For
- * production use without MetaMask, the AWS IoT bridge handles registration
- * via MQTT topics (Lambda signs the transaction server-side).
+ * If Cognito is configured and user is not authenticated, shows auth forms.
+ * Otherwise shows the device registration wizard.
  */
-export default function Onboard({ wallet }) {
+
+function AuthSection({ auth }) {
+  const [mode, setMode] = useState("signin"); // "signin" | "signup" | "confirm"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+
+  async function handleSignIn(e) {
+    e.preventDefault();
+    await auth.signIn(email, password);
+  }
+
+  async function handleSignUp(e) {
+    e.preventDefault();
+    await auth.signUp(email, password);
+  }
+
+  async function handleConfirm(e) {
+    e.preventDefault();
+    await auth.confirmSignUp(auth.pendingEmail || email, code);
+    if (!auth.error) setMode("signin");
+  }
+
+  if (auth.needsConfirmation || mode === "confirm") {
+    return (
+      <div className="card" style={{ maxWidth: "420px", margin: "0 auto", padding: "32px" }}>
+        <h2 style={{ marginBottom: "8px" }}>Confirm Your Email</h2>
+        <p style={{ color: "var(--text-muted)", marginBottom: "20px", fontSize: "14px" }}>
+          We sent a verification code to <strong>{auth.pendingEmail || email}</strong>
+        </p>
+        {auth.error && <div className="error-message" style={{ marginBottom: "16px" }}>{auth.error}</div>}
+        <form onSubmit={handleConfirm}>
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Verification Code</label>
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" required />
+          </div>
+          <button className="btn-primary" style={{ width: "100%" }} disabled={auth.loading}>
+            {auth.loading ? "Confirming..." : "Confirm Email"}
+          </button>
+        </form>
+        <p style={{ textAlign: "center", marginTop: "16px", fontSize: "13px", color: "var(--text-muted)" }}>
+          <button onClick={() => { setMode("signin"); }} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "13px" }}>
+            Back to Sign In
+          </button>
+        </p>
+      </div>
+    );
+  }
+
+  if (mode === "signup") {
+    return (
+      <div className="card" style={{ maxWidth: "420px", margin: "0 auto", padding: "32px" }}>
+        <h2 style={{ marginBottom: "8px" }}>Create Account</h2>
+        <p style={{ color: "var(--text-muted)", marginBottom: "20px", fontSize: "14px" }}>
+          Sign up to manage your devices and access tenant-scoped APIs.
+        </p>
+        {auth.error && <div className="error-message" style={{ marginBottom: "16px" }}>{auth.error}</div>}
+        <form onSubmit={handleSignUp}>
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
+          </div>
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 8 chars, uppercase + number" required />
+          </div>
+          <button className="btn-primary" style={{ width: "100%" }} disabled={auth.loading}>
+            {auth.loading ? "Creating..." : "Sign Up"}
+          </button>
+        </form>
+        <p style={{ textAlign: "center", marginTop: "16px", fontSize: "13px", color: "var(--text-muted)" }}>
+          Already have an account?{" "}
+          <button onClick={() => setMode("signin")} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "13px" }}>
+            Sign In
+          </button>
+        </p>
+      </div>
+    );
+  }
+
+  // Default: sign in
+  return (
+    <div className="card" style={{ maxWidth: "420px", margin: "0 auto", padding: "32px" }}>
+      <h2 style={{ marginBottom: "8px" }}>Sign In</h2>
+      <p style={{ color: "var(--text-muted)", marginBottom: "20px", fontSize: "14px" }}>
+        Sign in to access your tenant dashboard and API keys.
+      </p>
+      {auth.error && <div className="error-message" style={{ marginBottom: "16px" }}>{auth.error}</div>}
+      <form onSubmit={handleSignIn}>
+        <div style={{ marginBottom: "16px" }}>
+          <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Email</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
+        </div>
+        <div style={{ marginBottom: "16px" }}>
+          <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Password</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </div>
+        <button className="btn-primary" style={{ width: "100%" }} disabled={auth.loading}>
+          {auth.loading ? "Signing in..." : "Sign In"}
+        </button>
+      </form>
+      <p style={{ textAlign: "center", marginTop: "16px", fontSize: "13px", color: "var(--text-muted)" }}>
+        No account?{" "}
+        <button onClick={() => setMode("signup")} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "13px" }}>
+          Create one
+        </button>
+      </p>
+    </div>
+  );
+}
+
+export default function Onboard({ wallet, auth }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     thingName: "",
@@ -105,6 +210,19 @@ export default function Onboard({ wallet }) {
     crypto.getRandomValues(bytes);
     const hash = "0x" + Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
     update("firmwareHash", hash);
+  }
+
+  // Show auth forms if Cognito is configured and user is not signed in
+  if (auth?.enabled && !auth.isAuthenticated) {
+    return (
+      <div>
+        <div className="page-header">
+          <h1>Get Started</h1>
+          <p>Sign in or create an account to access the platform.</p>
+        </div>
+        <AuthSection auth={auth} />
+      </div>
+    );
   }
 
   if (!wallet.account) {

@@ -155,11 +155,50 @@ jobs:
       - name: Store RPC URL
         run: node scripts/ssm-store.js --project token --address 0x0000000000000000000000000000000000000000 --rpc-url ${{ secrets.ETH_RPC_URL }}
 
+  # ─── Stage 2b: Deploy Auth (Cognito) ──────────────────
+  deploy-auth:
+    name: Deploy Auth (Cognito)
+    if: inputs.deploy_infrastructure
+    needs: [store-addresses]
+    runs-on: ubuntu-latest
+    outputs:
+      user_pool_id: ${{ steps.outputs.outputs.user_pool_id }}
+      client_id: ${{ steps.outputs.outputs.client_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Deploy Cognito auth stack
+        run: |
+          aws cloudformation deploy \
+            --template-file projects/nge-auth/aws/cloudformation/cognito-auth.yaml \
+            --stack-name nge-auth-${{ inputs.environment }} \
+            --parameter-overrides \
+              Environment=${{ inputs.environment }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+      - name: Capture Cognito outputs
+        id: outputs
+        run: |
+          USER_POOL_ID=$(aws cloudformation describe-stacks \
+            --stack-name nge-auth-${{ inputs.environment }} \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+            --output text)
+          CLIENT_ID=$(aws cloudformation describe-stacks \
+            --stack-name nge-auth-${{ inputs.environment }} \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" \
+            --output text)
+          echo "user_pool_id=$USER_POOL_ID" >> "$GITHUB_OUTPUT"
+          echo "client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
+
   # ─── Stage 3: Deploy AWS Infrastructure ────────────────
   deploy-sentinel-monitor:
     name: Deploy Sentinel Monitor
     if: inputs.deploy_infrastructure
-    needs: [store-addresses]
+    needs: [store-addresses, deploy-auth]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -188,7 +227,7 @@ jobs:
   deploy-token-api:
     name: Deploy Token API
     if: inputs.deploy_infrastructure
-    needs: [store-addresses]
+    needs: [store-addresses, deploy-auth]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -205,13 +244,15 @@ jobs:
             --parameter-overrides \
               Environment=${{ inputs.environment }} \
               NotificationEmail=${{ secrets.ALERT_EMAIL }} \
+              CognitoUserPoolId=${{ needs.deploy-auth.outputs.user_pool_id }} \
+              CognitoClientId=${{ needs.deploy-auth.outputs.client_id }} \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 
   deploy-iot-bridge:
     name: Deploy IoT Bridge
     if: inputs.deploy_infrastructure
-    needs: [store-addresses]
+    needs: [store-addresses, deploy-auth]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -228,6 +269,8 @@ jobs:
             --parameter-overrides \
               Environment=${{ inputs.environment }} \
               NotificationEmail=${{ secrets.ALERT_EMAIL }} \
+              CognitoUserPoolId=${{ needs.deploy-auth.outputs.user_pool_id }} \
+              CognitoClientId=${{ needs.deploy-auth.outputs.client_id }} \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 
@@ -235,7 +278,7 @@ jobs:
   deploy-frontend:
     name: Deploy Frontend
     if: inputs.deploy_frontend
-    needs: [deploy-sentinel-monitor, deploy-token-api, deploy-iot-bridge]
+    needs: [deploy-sentinel-monitor, deploy-token-api, deploy-iot-bridge, deploy-auth]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -257,6 +300,9 @@ jobs:
         env:
           REACT_APP_TOKEN_API: $(aws cloudformation describe-stacks --stack-name nge-token-api-${{ inputs.environment }} --query "Stacks[0].Outputs[?OutputKey=='TokenApiEndpoint'].OutputValue" --output text)
           REACT_APP_CHAIN_ID: "11155111"
+          REACT_APP_COGNITO_USER_POOL_ID: ${{ needs.deploy-auth.outputs.user_pool_id }}
+          REACT_APP_COGNITO_CLIENT_ID: ${{ needs.deploy-auth.outputs.client_id }}
+          REACT_APP_COGNITO_REGION: ${{ env.AWS_REGION }}
         run: npm run build
       - name: Deploy to S3
         run: |
