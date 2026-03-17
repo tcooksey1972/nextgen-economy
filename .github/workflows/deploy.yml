@@ -325,9 +325,20 @@ jobs:
           cache: npm
           cache-dependency-path: projects/nge-frontend/package-lock.json
       - run: npm ci
+      - name: Retrieve contract addresses and API endpoints
+        run: |
+          echo "REACT_APP_TOKEN_ADDRESS=$(aws ssm get-parameter --name /nge/token/contract-address --query Parameter.Value --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
+          echo "REACT_APP_IOT_ADDRESS=$(aws ssm get-parameter --name /nge/iot/contract-address --query Parameter.Value --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
+          echo "REACT_APP_SENTINEL_ADDRESS=$(aws ssm get-parameter --name /nge/sentinel/contract-address --query Parameter.Value --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
+          echo "REACT_APP_TOKEN_API=$(aws cloudformation describe-stacks --stack-name nge-token-api-${{ inputs.environment }} --query "Stacks[0].Outputs[?OutputKey=='TokenApiEndpoint'].OutputValue" --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
+          echo "REACT_APP_SENTINEL_API=$(aws cloudformation describe-stacks --stack-name nge-sentinel-monitor-${{ inputs.environment }} --query "Stacks[0].Outputs[?OutputKey=='SentinelApiEndpoint'].OutputValue" --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
       - name: Build frontend
         env:
-          REACT_APP_TOKEN_API: $(aws cloudformation describe-stacks --stack-name nge-token-api-${{ inputs.environment }} --query "Stacks[0].Outputs[?OutputKey=='TokenApiEndpoint'].OutputValue" --output text)
+          REACT_APP_TOKEN_ADDRESS: ${{ env.REACT_APP_TOKEN_ADDRESS }}
+          REACT_APP_IOT_ADDRESS: ${{ env.REACT_APP_IOT_ADDRESS }}
+          REACT_APP_SENTINEL_ADDRESS: ${{ env.REACT_APP_SENTINEL_ADDRESS }}
+          REACT_APP_TOKEN_API: ${{ env.REACT_APP_TOKEN_API }}
+          REACT_APP_SENTINEL_API: ${{ env.REACT_APP_SENTINEL_API }}
           REACT_APP_CHAIN_ID: "11155111"
           REACT_APP_COGNITO_USER_POOL_ID: ${{ needs.deploy-auth.outputs.user_pool_id }}
           REACT_APP_COGNITO_CLIENT_ID: ${{ needs.deploy-auth.outputs.client_id }}
