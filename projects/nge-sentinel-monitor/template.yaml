@@ -139,7 +139,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref StateTable
         - SNSPublishMessagePolicy:
-            TopicArn: !Ref AlertTopic
+            TopicName: !GetAtt AlertTopic.TopicName
       Events:
         Schedule:
           Type: Schedule
@@ -160,7 +160,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref StateTable
         - SNSPublishMessagePolicy:
-            TopicArn: !Ref AlertTopic
+            TopicName: !GetAtt AlertTopic.TopicName
       Events:
         Schedule:
           Type: Schedule
