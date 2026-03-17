@@ -33,6 +33,10 @@ contract NGEGovernorV2 is
     GovernorTimelockControl,
     GovernorPreventLateQuorum
 {
+    /**
+     * @param token ERC20Votes or ERC721Votes token used for voting weight.
+     * @param timelock TimelockController that queues and executes approved proposals.
+     */
     constructor(IVotes token, TimelockController timelock)
         Governor("NGE Governor")
         GovernorVotes(token)
@@ -41,26 +45,34 @@ contract NGEGovernorV2 is
         GovernorPreventLateQuorum(14400)
     {}
 
+    /// @notice Voting delay: ~1 day (7200 blocks at 12s/block).
     function votingDelay() public pure override returns (uint256) { return 7200; }
+    /// @notice Voting period: ~1 week (50400 blocks at 12s/block).
     function votingPeriod() public pure override returns (uint256) { return 50400; }
+    /// @notice Anyone with tokens can create proposals (threshold = 0).
     function proposalThreshold() public pure override returns (uint256) { return 0; }
 
     // ──────────────────────────────────────────────
     //  Required overrides for multiple inheritance
+    //  Solidity requires explicit resolution when multiple
+    //  base contracts define the same function.
     // ──────────────────────────────────────────────
 
+    /// @dev Resolves state() between Governor and GovernorTimelockControl.
     function state(uint256 proposalId)
         public view override(Governor, GovernorTimelockControl) returns (ProposalState)
     {
         return super.state(proposalId);
     }
 
+    /// @dev Resolves proposalNeedsQueuing() — always true with timelock.
     function proposalNeedsQueuing(uint256 proposalId)
         public view override(Governor, GovernorTimelockControl) returns (bool)
     {
         return super.proposalNeedsQueuing(proposalId);
     }
 
+    /// @dev Returns the (possibly extended) deadline from GovernorPreventLateQuorum.
     function proposalDeadline(uint256 proposalId)
         public view override(Governor, GovernorPreventLateQuorum) returns (uint256)
     {
@@ -102,6 +114,7 @@ contract NGEGovernorV2 is
         return super._executor();
     }
 
+    /// @dev Resolves _castVote() — GovernorPreventLateQuorum checks for deadline extension.
     function _castVote(
         uint256 proposalId,
         address account,

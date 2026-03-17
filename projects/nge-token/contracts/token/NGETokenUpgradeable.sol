@@ -50,6 +50,12 @@ contract NGETokenUpgradeable is
         _disableInitializers();
     }
 
+    /**
+     * @notice Initialize the upgradeable token with supply cap and optional initial mint.
+     * @param cap_ Maximum total supply (0 = unlimited).
+     * @param initialMintTo Address to receive the initial token mint.
+     * @param initialMintAmount Number of tokens to mint to initialMintTo.
+     */
     function initialize(
         uint256 cap_,
         address initialMintTo,
@@ -122,10 +128,12 @@ contract NGETokenUpgradeable is
     //  View functions
     // ──────────────────────────────────────────────
 
+    /// @notice Returns the maximum total supply (0 = unlimited).
     function supplyCap() external view returns (uint256) {
         return _supplyCap;
     }
 
+    /// @notice Returns the remaining tokens that can be minted before hitting the cap.
     function mintableSupply() external view returns (uint256) {
         if (_supplyCap == 0) return type(uint256).max;
         return _supplyCap - totalSupply();

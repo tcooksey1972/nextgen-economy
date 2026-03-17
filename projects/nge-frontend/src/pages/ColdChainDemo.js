@@ -15,22 +15,27 @@ import { ethers } from "ethers";
 //  Demo state helpers
 // ─────────────────────────────────────────────────────
 
+/** Generate a random 32-byte hex hash (simulates keccak256 output). */
 function randomHash() {
   return ethers.hexlify(ethers.randomBytes(32));
 }
 
+/** Generate a random 20-byte hex address (simulates an Ethereum address). */
 function randomAddr() {
   return ethers.hexlify(ethers.randomBytes(20));
 }
 
+/** Truncate a 66-char hex hash to "0x12345678...abcdef" for display. */
 function shortHash(h) {
   return h ? `${h.slice(0, 10)}...${h.slice(-6)}` : "";
 }
 
+/** Truncate a 42-char hex address to "0x123456...abcd" for display. */
 function shortAddr(a) {
   return a ? `${a.slice(0, 8)}...${a.slice(-4)}` : "";
 }
 
+/** Simulated sensor names for the pharmaceutical cold chain scenario. */
 const SENSOR_NAMES = [
   "PharmaTemp-001", "PharmaTemp-002", "PharmaTemp-003",
   "PharmaTemp-004", "PharmaTemp-005", "PharmaTemp-006",
@@ -42,6 +47,15 @@ const SENSOR_NAMES = [
 //  Section component
 // ─────────────────────────────────────────────────────
 
+/**
+ * DemoSection — Expandable card for a single OZ module demo.
+ * @param {number} number - Section number (1-11), shown in the circle badge.
+ * @param {string} title - Section title (e.g., "Batch Sensor Onboarding").
+ * @param {string} ozModule - OpenZeppelin module name shown as subtitle.
+ * @param {string} description - Explanation of what this module does in the scenario.
+ * @param {React.ReactNode} children - Interactive demo content.
+ * @param {"ready"|"active"|"complete"} status - Controls border color and badge style.
+ */
 function DemoSection({ number, title, ozModule, description, children, status }) {
   const [expanded, setExpanded] = useState(number <= 2);
   const statusColors = {
@@ -85,6 +99,12 @@ function DemoSection({ number, title, ozModule, description, children, status })
   );
 }
 
+/**
+ * ResultBox — Key-value display row for showing demo outputs.
+ * @param {string} label - Left-side label text.
+ * @param {string} value - Right-side value text.
+ * @param {boolean} [mono] - If true, renders value in monospace font.
+ */
 function ResultBox({ label, value, mono }) {
   return (
     <div style={{
@@ -101,22 +121,41 @@ function ResultBox({ label, value, mono }) {
 //  Main component
 // ─────────────────────────────────────────────────────
 
+/**
+ * ColdChainDemo — Main page component for the interactive OZ module walkthrough.
+ *
+ * Runs entirely in client-side "demo mode" with simulated contract interactions.
+ * Each of the 11 sections below manages its own state and simulates the behavior
+ * of the corresponding Solidity contract. When real contracts are deployed,
+ * replace the simulation logic with ethers.js contract calls.
+ *
+ * @param {Object} props
+ * @param {Object} [props.wallet] - Wallet hook from useWallet(). If connected,
+ *   Section 2 (EIP-712) uses MetaMask for real message signing. All other
+ *   sections use purely simulated data regardless of wallet state.
+ */
 export default function ColdChainDemo({ wallet }) {
-  // Section states
-  const [merkleState, setMerkleState] = useState({ root: null, sensors: [], claimed: [] });
-  const [signedState, setSignedState] = useState({ readings: [] });
-  const [metaTxState, setMetaTxState] = useState({ relayed: [] });
-  const [accessState, setAccessState] = useState({ currentRole: "admin", actions: [] });
-  const [bitmapState, setBitmapState] = useState({ flags: {} });
-  const [erc1155State, setErc1155State] = useState({ credits: 0, nfts: [] });
-  const [uupsState, setUupsState] = useState({ version: "V1", upgraded: false });
-  const [nonceState, setNonceState] = useState({ nonces: {}, alerts: [] });
-  const [enumState, setEnumState] = useState({ guardians: ["0xGuardian1...a1b2", "0xGuardian2...c3d4", "0xGuardian3...e5f6"], operators: [] });
-  const [reputState, setReputState] = useState({ scores: {}, history: [] });
-  const [govState, setGovState] = useState({ proposal: null, extended: false, votes: { for: 0, against: 0 } });
+  // ── Per-section state ──
+  // Each state object tracks the simulated contract state for one OZ module.
+  const [merkleState, setMerkleState] = useState({ root: null, sensors: [], claimed: [] });       // 1. MerkleProof
+  const [signedState, setSignedState] = useState({ readings: [] });                                // 2. EIP-712 + ECDSA
+  const [metaTxState, setMetaTxState] = useState({ relayed: [] });                                 // 3. ERC-2771
+  const [accessState, setAccessState] = useState({ currentRole: "admin", actions: [] });           // 4. AccessManager
+  const [bitmapState, setBitmapState] = useState({ flags: {} });                                   // 5. BitMaps
+  const [erc1155State, setErc1155State] = useState({ credits: 0, nfts: [] });                      // 6. ERC-1155
+  const [uupsState, setUupsState] = useState({ version: "V1", upgraded: false });                  // 7. UUPS Proxy
+  const [nonceState, setNonceState] = useState({ nonces: {}, alerts: [] });                        // 8. Nonces
+  const [enumState, setEnumState] = useState({                                                     // 9. EnumerableSet
+    guardians: ["0xGuardian1...a1b2", "0xGuardian2...c3d4", "0xGuardian3...e5f6"], operators: [],
+  });
+  const [reputState, setReputState] = useState({ scores: {}, history: [] });                       // 10. Checkpoints
+  const [govState, setGovState] = useState({ proposal: null, extended: false, votes: { for: 0, against: 0 } }); // 11. Governor
 
   // ─── 1. MerkleProof ───
+  // Simulates MerkleOnboarding.sol: builds a Merkle tree of pre-approved sensors,
+  // then lets users "claim" each device by verifying their leaf against the root.
 
+  /** Build a simulated Merkle tree from 6 sensor entries and compute the root hash. */
   const handleGenerateMerkle = useCallback(() => {
     const sensors = SENSOR_NAMES.slice(0, 6).map((name, i) => ({
       name,
@@ -128,6 +167,7 @@ export default function ColdChainDemo({ wallet }) {
     setMerkleState({ root, sensors, claimed: [] });
   }, []);
 
+  /** Mark a sensor as claimed (simulates claimDevice() with valid Merkle proof). */
   const handleClaimSensor = useCallback((idx) => {
     setMerkleState(prev => ({
       ...prev,
@@ -136,7 +176,11 @@ export default function ColdChainDemo({ wallet }) {
   }, []);
 
   // ─── 2. EIP-712 Signed Data ───
+  // Simulates SignedDataAnchor.sol: sensors sign temperature/humidity readings
+  // off-chain. If wallet is connected, uses real MetaMask signing; otherwise
+  // generates a fake signature for demo purposes.
 
+  /** Sign a temperature reading. Uses MetaMask if wallet connected, else simulates. */
   const handleSignReading = useCallback(async () => {
     const temp = (18 + Math.random() * 10).toFixed(1);
     const humidity = (50 + Math.random() * 30).toFixed(0);
@@ -168,7 +212,10 @@ export default function ColdChainDemo({ wallet }) {
   }, [wallet]);
 
   // ─── 3. Meta-Transactions ───
+  // Simulates MetaTxDeviceRegistry.sol: a trusted forwarder relays signed
+  // transactions so IoT devices don't need ETH for gas.
 
+  /** Simulate a gasless transaction relayed through a trusted forwarder. */
   const handleRelayTx = useCallback(() => {
     setMetaTxState(prev => ({
       relayed: [...prev.relayed, {
@@ -182,7 +229,10 @@ export default function ColdChainDemo({ wallet }) {
   }, []);
 
   // ─── 4. AccessManager ───
+  // Simulates DeviceAccessManaged.sol: centralized role-based permissions
+  // where one AccessManager governs all platform contracts.
 
+  /** Log an authorized action for a given role (simulates restricted modifier check). */
   const handleRoleAction = useCallback((role, action) => {
     setAccessState(prev => ({
       currentRole: role,
@@ -196,7 +246,10 @@ export default function ColdChainDemo({ wallet }) {
   }, []);
 
   // ─── 5. BitMaps ───
+  // Simulates DeviceBitMap.sol: gas-efficient boolean flags stored as
+  // 256 bits per storage slot instead of one slot per flag.
 
+  /** Toggle a device flag on/off (simulates setDeviceFlag / unsetDeviceFlag). */
   const handleToggleFlag = useCallback((deviceId, flag) => {
     setBitmapState(prev => {
       const key = `${deviceId}-${flag}`;
@@ -206,11 +259,15 @@ export default function ColdChainDemo({ wallet }) {
   }, []);
 
   // ─── 6. ERC-1155 ───
+  // Simulates DeviceToken.sol (SimpleDeviceToken): fungible sensor credits
+  // (IDs 0-999) and non-fungible device NFTs (IDs 1000+) in one contract.
 
+  /** Issue 100 fungible sensor credits (simulates issueSensorCredits). */
   const handleIssueCredits = useCallback(() => {
     setErc1155State(prev => ({ ...prev, credits: prev.credits + 100 }));
   }, []);
 
+  /** Mint a unique device NFT with auto-incrementing ID starting at 1000. */
   const handleMintNFT = useCallback(() => {
     setErc1155State(prev => ({
       ...prev,
@@ -219,13 +276,19 @@ export default function ColdChainDemo({ wallet }) {
   }, []);
 
   // ─── 7. UUPS ───
+  // Simulates DeviceRegistryUpgradeable.sol: proxy keeps same address and
+  // storage while swapping the implementation contract.
 
+  /** Simulate upgrading the implementation from V1 to V2 (proxy address unchanged). */
   const handleUpgrade = useCallback(() => {
     setUupsState({ version: "V2", upgraded: true });
   }, []);
 
   // ─── 8. Nonces ───
+  // Simulates NonceGuard.sol: each guardian's signed action consumes a
+  // sequential nonce, making signature replay impossible.
 
+  /** Simulate a guardian-signed emergency pause with nonce consumption. */
   const handleSignedAlert = useCallback(() => {
     const guardian = enumState.guardians[Math.floor(Math.random() * enumState.guardians.length)];
     const nonce = (nonceState.nonces[guardian] || 0);
@@ -242,14 +305,20 @@ export default function ColdChainDemo({ wallet }) {
   }, [enumState.guardians, nonceState.nonces]);
 
   // ─── 9. EnumerableSet ───
+  // Simulates EnumerableGuardians.sol: O(1) add/remove/contains with full
+  // enumeration support for guardian and operator address sets.
 
+  /** Add a new operator to the enumerable set (simulates _addMember). */
   const handleAddOperator = useCallback(() => {
     const addr = "0xOperator" + (enumState.operators.length + 1) + "..." + Math.random().toString(16).slice(2, 6);
     setEnumState(prev => ({ ...prev, operators: [...prev.operators, addr] }));
   }, [enumState.operators.length]);
 
   // ─── 10. Checkpoints ───
+  // Simulates DeviceReputation.sol: historical reputation scores stored as
+  // Checkpoints.Trace208, enabling time-travel queries via binary search.
 
+  /** Update a device's reputation score with a random delta (simulates updateDeviceReputation). */
   const handleUpdateReputation = useCallback((deviceId) => {
     const delta = Math.floor(Math.random() * 2000) - 500;
     const current = reputState.scores[deviceId] || 5000;
@@ -266,7 +335,10 @@ export default function ColdChainDemo({ wallet }) {
   }, [reputState.scores]);
 
   // ─── 11. GovernorPreventLateQuorum ───
+  // Simulates NGEGovernorV2.sol: when cumulative votes exceed a threshold
+  // (simulating late quorum), the voting deadline auto-extends by 14400 blocks.
 
+  /** Create a governance proposal for sensor certification standards. */
   const handleCreateProposal = useCallback(() => {
     setGovState({
       proposal: { id: 1, title: "Approve ISO 23412 sensor certification standard", deadline: "Block #50400" },
@@ -275,6 +347,7 @@ export default function ColdChainDemo({ wallet }) {
     });
   }, []);
 
+  /** Cast a vote. If total votes exceed 4000, triggers late quorum extension. */
   const handleVote = useCallback((support) => {
     setGovState(prev => {
       const newVotes = { ...prev.votes };
