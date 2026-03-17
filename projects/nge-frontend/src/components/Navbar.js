@@ -94,6 +94,13 @@ export default function Navbar({ account, chainId, isCorrectChain, onConnect, on
           About
         </NavLink>
 
+        <NavLink
+          to="/demo"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Demo
+        </NavLink>
+
         {/* Divider between marketing and app */}
         <div style={dividerStyle} />
 

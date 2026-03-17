@@ -11,6 +11,7 @@ import Token from "./pages/Token";
 import Devices from "./pages/Devices";
 import Governance from "./pages/Governance";
 import Onboard from "./pages/Onboard";
+import ColdChainDemo from "./pages/ColdChainDemo";
 
 const layoutStyle = {
   maxWidth: "1200px",
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/devices" element={<Devices wallet={wallet} auth={auth} />} />
           <Route path="/governance" element={<Governance wallet={wallet} auth={auth} />} />
           <Route path="/onboard" element={<Onboard wallet={wallet} auth={auth} />} />
+          <Route path="/demo" element={<ColdChainDemo wallet={wallet} />} />
         </Routes>
       </main>
     </div>
