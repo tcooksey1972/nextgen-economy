@@ -45,6 +45,7 @@ Before touching any code, stand up the accounts and services the platform depend
    - `AmazonSNSFullAccess`
    - `AmazonSQSFullAccess`
    - `SecretsManagerReadWrite`
+   - `AmazonCognitoPowerUser` (needed for Cognito User Pool deployment)
    - `IAMFullAccess` (needed to create Lambda execution roles)
 5. Save the Access Key ID and Secret Access Key securely
 6. Install AWS CLI v2 and configure:
@@ -94,7 +95,8 @@ For tighter control, use this custom policy instead of the managed policies abov
         "secretsmanager:GetSecretValue",
         "secretsmanager:UpdateSecret",
         "secretsmanager:DeleteSecret",
-        "logs:*"
+        "logs:*",
+        "cognito-idp:*"
       ],
       "Resource": "*"
     }

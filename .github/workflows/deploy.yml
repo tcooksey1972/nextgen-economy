@@ -239,6 +239,18 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+      - name: Package Lambda functions
+        run: |
+          BUCKET="nge-token-lambda-${{ inputs.environment }}"
+          # Create the S3 bucket if it doesn't exist
+          aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null || \
+            aws s3 mb "s3://$BUCKET" --region ${{ env.AWS_REGION }}
+          # Zip and upload each Lambda function
+          cd projects/nge-token/aws/lambda
+          for handler in getBalance getTransfers getTokenInfo processTransferEvent; do
+            zip -j "${handler}.zip" "${handler}.js"
+            aws s3 cp "${handler}.zip" "s3://${BUCKET}/lambda/${handler}.zip"
+          done
       - name: Deploy Token API stack
         run: |
           aws cloudformation deploy \
@@ -264,6 +276,18 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+      - name: Package Lambda functions
+        run: |
+          BUCKET="nge-iot-lambda-${{ inputs.environment }}"
+          # Create the S3 bucket if it doesn't exist
+          aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null || \
+            aws s3 mb "s3://$BUCKET" --region ${{ env.AWS_REGION }}
+          # Zip and upload each Lambda function
+          cd projects/nge-iot/aws/lambda
+          for handler in registerDevice anchorData verifyAnchor; do
+            zip -j "${handler}.zip" "${handler}.js"
+            aws s3 cp "${handler}.zip" "s3://${BUCKET}/lambda/${handler}.zip"
+          done
       - name: Deploy IoT Bridge stack
         run: |
           aws cloudformation deploy \
