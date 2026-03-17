@@ -333,6 +333,14 @@ jobs:
           REACT_APP_COGNITO_CLIENT_ID: ${{ needs.deploy-auth.outputs.client_id }}
           REACT_APP_COGNITO_REGION: ${{ env.AWS_REGION }}
         run: npm run build
+      - name: Deploy frontend infrastructure
+        working-directory: projects/nge-frontend
+        run: |
+          aws cloudformation deploy \
+            --template-file aws/cloudformation/frontend-hosting.yaml \
+            --stack-name nge-frontend-${{ inputs.environment }} \
+            --parameter-overrides Environment=${{ inputs.environment }} \
+            --no-fail-on-empty-changeset
       - name: Deploy to S3
         run: |
           BUCKET=$(aws cloudformation describe-stacks \
