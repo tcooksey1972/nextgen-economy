@@ -290,6 +290,7 @@ jobs:
           done
       - name: Deploy IoT Bridge stack
         run: |
+          SIGNER_ARN=$(aws secretsmanager describe-secret --secret-id nge-iot-signer --query ARN --output text)
           aws cloudformation deploy \
             --template-file projects/nge-iot/aws/cloudformation/iot-blockchain-bridge.yaml \
             --stack-name nge-iot-bridge-${{ inputs.environment }} \
@@ -298,6 +299,7 @@ jobs:
               NotificationEmail=${{ secrets.ALERT_EMAIL }} \
               CognitoUserPoolId=${{ needs.deploy-auth.outputs.user_pool_id }} \
               CognitoClientId=${{ needs.deploy-auth.outputs.client_id }} \
+              SignerSecretArn=$SIGNER_ARN \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 
