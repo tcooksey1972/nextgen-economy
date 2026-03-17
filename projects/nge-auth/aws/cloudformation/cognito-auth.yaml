@@ -34,6 +34,7 @@ Resources:
 
   UserPool:
     Type: AWS::Cognito::UserPool
+    DependsOn: PostConfirmationLambda
     Properties:
       UserPoolName: !Sub nge-users-${Environment}
       AutoVerifiedAttributes:
@@ -41,6 +42,8 @@ Resources:
       UsernameAttributes:
         - email
       MfaConfiguration: 'OFF'
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmationLambda.Arn
       Schema:
         - Name: email
           Required: true
@@ -136,7 +139,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub nge-auth-post-confirm-${Environment}
-      Runtime: nodejs18.x
+      Runtime: nodejs20.x
       Handler: index.handler
       Timeout: 10
       MemorySize: 128
@@ -144,7 +147,6 @@ Resources:
       Environment:
         Variables:
           TENANT_TABLE: !Ref TenantTable
-          USER_POOL_ID: !Ref UserPool
       Code:
         ZipFile: |
           const { DynamoDBClient, PutItemCommand, GetItemCommand } = require("@aws-sdk/client-dynamodb");
@@ -179,8 +181,9 @@ Resources:
               }));
 
               // Update the user's custom attributes with the new tenantId
+              // Use event.userPoolId provided by the Cognito trigger
               await cognito.send(new AdminUpdateUserAttributesCommand({
-                UserPoolId: process.env.USER_POOL_ID,
+                UserPoolId: event.userPoolId,
                 Username: event.userName,
                 UserAttributes: [
                   { Name: "custom:tenantId", Value: tenantId },
@@ -219,7 +222,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - cognito-idp:AdminUpdateUserAttributes
-                Resource: !GetAtt UserPool.Arn
+                Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
 
   PostConfirmationPermission:
     Type: AWS::Lambda::Permission
@@ -229,14 +232,6 @@ Resources:
       Principal: cognito-idp.amazonaws.com
       SourceArn: !GetAtt UserPool.Arn
 
-  # Attach the trigger to the User Pool
-  UserPoolLambdaConfig:
-    Type: AWS::Cognito::UserPoolLambdaTrigger
-    DependsOn: PostConfirmationPermission
-    Properties:
-      UserPoolId: !Ref UserPool
-      LambdaConfig:
-        PostConfirmation: !GetAtt PostConfirmationLambda.Arn
 
 # ──────────────────────────────────────────────
 #  Outputs
