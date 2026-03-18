@@ -1,0 +1,99 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "uint208",
+        "name": "score",
+        "type": "uint208"
+      },
+      {
+        "internalType": "uint208",
+        "name": "max",
+        "type": "uint208"
+      }
+    ],
+    "name": "ReputationScoreOutOfRange",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "deviceId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint208",
+        "name": "oldScore",
+        "type": "uint208"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint208",
+        "name": "newScore",
+        "type": "uint208"
+      }
+    ],
+    "name": "ReputationUpdated",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_REPUTATION",
+    "outputs": [
+      {
+        "internalType": "uint208",
+        "name": "",
+        "type": "uint208"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "deviceId",
+        "type": "uint256"
+      }
+    ],
+    "name": "reputation",
+    "outputs": [
+      {
+        "internalType": "uint208",
+        "name": "",
+        "type": "uint208"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "deviceId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint48",
+        "name": "timestamp",
+        "type": "uint48"
+      }
+    ],
+    "name": "reputationAt",
+    "outputs": [
+      {
+        "internalType": "uint208",
+        "name": "",
+        "type": "uint208"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

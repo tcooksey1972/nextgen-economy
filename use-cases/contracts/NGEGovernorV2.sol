@@ -1,0 +1,1 @@
+../platform-governance/contracts/NGEGovernorV2.sol

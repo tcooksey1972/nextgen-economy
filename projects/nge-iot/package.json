@@ -8,9 +8,18 @@
     "compile:local": "node scripts/compile.js",
     "test": "npx hardhat test",
     "test:local": "node scripts/test.js",
+    "coverage": "npx hardhat coverage",
     "node": "npx hardhat node"
   },
-  "keywords": ["solidity", "iot", "smart-contracts", "openzeppelin", "ethereum", "device-registry", "data-anchor"],
+  "keywords": [
+    "solidity",
+    "iot",
+    "smart-contracts",
+    "openzeppelin",
+    "ethereum",
+    "device-registry",
+    "data-anchor"
+  ],
   "author": "Cloud Creations LLC",
   "license": "MIT",
   "repository": {
@@ -22,5 +31,9 @@
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.6.1",
     "hardhat": "^2.28.6"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts-upgradeable": "^5.6.1",
+    "merkletreejs": "^0.6.0"
   }
 }
