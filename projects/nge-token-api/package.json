@@ -1,0 +1,32 @@
+{
+  "name": "nge-token-api",
+  "version": "1.0.0",
+  "description": "AWS serverless API for NGE token operations — event indexing, governance proposals, balance/transfer queries, and staking. Reads from blockchain, caches in DynamoDB, serves via API Gateway.",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node tests/run.js",
+    "deploy": "sam build && sam deploy --guided",
+    "deploy:stack": "sam build && sam deploy --no-confirm-changeset",
+    "local:api": "sam local start-api"
+  },
+  "keywords": [
+    "ethereum",
+    "erc20",
+    "governance",
+    "aws",
+    "serverless",
+    "lambda",
+    "api"
+  ],
+  "author": "Cloud Creations LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tcooksey1972/nextgen-economy.git",
+    "directory": "projects/nge-token-api"
+  },
+  "dependencies": {
+    "ethers": "^6.16.0"
+  }
+}

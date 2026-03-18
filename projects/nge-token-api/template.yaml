@@ -1,0 +1,240 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  NGE Token API — Serverless backend for token operations and governance.
+  Indexes Transfer/Delegation/Governance events from Sepolia into DynamoDB
+  and serves a REST API for the frontend dashboard.
+
+Parameters:
+  EthRpcUrl:
+    Type: String
+    Description: Ethereum JSON-RPC endpoint (Alchemy or Infura Sepolia URL).
+    NoEcho: true
+
+  TokenAddress:
+    Type: String
+    Description: Deployed NGE Token contract address on Sepolia.
+    AllowedPattern: "^0x[0-9a-fA-F]{40}$"
+
+  GovernorAddress:
+    Type: String
+    Description: Deployed NGE Governor contract address on Sepolia (optional).
+    Default: ""
+
+  AlertEmail:
+    Type: String
+    Description: Email address for governance alert notifications.
+    AllowedPattern: "^[^@]+@[^@]+\\.[^@]+$"
+
+  ChainId:
+    Type: Number
+    Default: 11155111
+    Description: Ethereum chain ID (11155111 = Sepolia).
+
+  PollBlockRange:
+    Type: Number
+    Default: 200
+    Description: Number of blocks to look back on first poll.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ETH_RPC_URL: !Ref EthRpcUrl
+        TOKEN_ADDRESS: !Ref TokenAddress
+        GOVERNOR_ADDRESS: !Ref GovernorAddress
+        CHAIN_ID: !Ref ChainId
+        EVENTS_TABLE: !Ref TokenEventsTable
+        GOVERNANCE_TABLE: !Ref GovernanceTable
+        ALERT_TOPIC_ARN: !Ref GovernanceAlertTopic
+        POLL_BLOCK_RANGE: !Ref PollBlockRange
+
+Resources:
+
+  # ─── DynamoDB Tables ────────────────────────────────────
+
+  TokenEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TokenEvents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  GovernanceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: GovernanceData
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ─── SNS Topic ──────────────────────────────────────────
+
+  GovernanceAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: GovernanceAlerts
+      DisplayName: NGE Governance Alerts
+
+  GovernanceAlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref GovernanceAlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ─── Lambda Functions ───────────────────────────────────
+
+  TokenEventPollerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-token-event-poller
+      Description: Polls blockchain for NGE token Transfer and delegation events.
+      Handler: src/lambdas/tokenEventPoller.handler
+      CodeUri: .
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TokenEventsTable
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Description: Poll for token events every minute
+            Enabled: true
+
+  GovernancePollerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-governance-poller
+      Description: Polls blockchain for Governor proposal and vote events.
+      Handler: src/lambdas/governancePoller.handler
+      CodeUri: .
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref GovernanceTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt GovernanceAlertTopic.TopicName
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(2 minutes)
+            Description: Poll for governance events every 2 minutes
+            Enabled: true
+
+  TokenApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-token-api
+      Description: REST API for token balance, transfers, and governance queries.
+      Handler: src/lambdas/apiHandler.handler
+      CodeUri: .
+      Timeout: 15
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TokenEventsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref GovernanceTable
+      Events:
+        GetTokenInfo:
+          Type: Api
+          Properties:
+            Path: /token-info
+            Method: GET
+            RestApiId: !Ref TokenApi
+        GetBalance:
+          Type: Api
+          Properties:
+            Path: /balance
+            Method: GET
+            RestApiId: !Ref TokenApi
+        GetTransfers:
+          Type: Api
+          Properties:
+            Path: /transfers
+            Method: GET
+            RestApiId: !Ref TokenApi
+        GetProposals:
+          Type: Api
+          Properties:
+            Path: /proposals
+            Method: GET
+            RestApiId: !Ref TokenApi
+        GetVotes:
+          Type: Api
+          Properties:
+            Path: /votes
+            Method: GET
+            RestApiId: !Ref TokenApi
+        GetHealth:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: GET
+            RestApiId: !Ref TokenApi
+        Options:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: OPTIONS
+            RestApiId: !Ref TokenApi
+
+  # ─── API Gateway ────────────────────────────────────────
+
+  TokenApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: NGETokenAPI
+      StageName: prod
+      Description: REST API for NGE token operations and governance.
+      Cors:
+        AllowMethods: "'GET,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+Outputs:
+  ApiUrl:
+    Description: Token API Gateway endpoint URL
+    Value: !Sub "https://${TokenApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+
+  TokenEventsTableName:
+    Description: DynamoDB table for token events
+    Value: !Ref TokenEventsTable
+
+  GovernanceTableName:
+    Description: DynamoDB table for governance data
+    Value: !Ref GovernanceTable
+
+  GovernanceAlertTopicArn:
+    Description: SNS Topic ARN for governance alerts
+    Value: !Ref GovernanceAlertTopic
