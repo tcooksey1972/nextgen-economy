@@ -7,8 +7,21 @@ import TOKEN_ABI from "../abi/NGEToken.json";
 /**
  * Governance page — Full proposal lifecycle: delegate, propose, vote, queue, execute.
  *
- * When the Governor contract is deployed, shows the full governance UI.
- * When only the token is deployed, shows the delegation-only view.
+ * Rendering modes:
+ *   1. No wallet connected → "Connect Wallet" prompt
+ *   2. No token configured → "Set REACT_APP_TOKEN_ADDRESS" notice
+ *   3. Token only (no Governor) → DelegationOnly view (delegation + "How Governance Works")
+ *   4. Token + Governor deployed → FullGovernance view (delegation + proposals + voting)
+ *
+ * Data flow:
+ *   - Delegation: reads from token contract on-chain (balance, votes, delegates)
+ *   - Proposals:  tries Token API first (DynamoDB), falls back to on-chain event queries
+ *   - Writes:     always on-chain via signer (delegate, propose, vote, queue, execute)
+ *
+ * Environment variables:
+ *   - REACT_APP_TOKEN_ADDRESS   — Required for delegation
+ *   - REACT_APP_GOVERNOR_ADDRESS — Required for full governance UI
+ *   - REACT_APP_TOKEN_API       — Optional; enables cached API reads for proposals
  */
 export default function Governance({ wallet }) {
   const hasGovernor = !!config.contracts.governor;

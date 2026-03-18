@@ -1,9 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import useTokenContract from "../hooks/useTokenContract";
-import config, { txUrl, truncateAddress } from "../utils/config";
+import config, { txUrl, truncateAddress, addressUrl } from "../utils/config";
+import { getTransfers } from "../utils/api";
 
 /**
  * Token page — NGE token management: balance, transfer, delegate, burn.
+ *
+ * Transfer history is loaded from the Token API (DynamoDB-cached) when
+ * REACT_APP_TOKEN_API is configured. Without the API, the history section
+ * shows a notice directing users to the block explorer.
  */
 export default function Token({ wallet }) {
   const { tokenInfo, balance, votingPower, delegate, loading, error, transfer, delegateVotes, burn, refresh } =
@@ -14,6 +19,28 @@ export default function Token({ wallet }) {
   const [delegateTo, setDelegateTo] = useState("");
   const [burnAmount, setBurnAmount] = useState("");
   const [txHash, setTxHash] = useState(null);
+  const [transfers, setTransfers] = useState([]);
+  const [transfersLoading, setTransfersLoading] = useState(false);
+
+  /** Fetch transfer history from the Token API (DynamoDB index). */
+  const fetchTransfers = useCallback(async () => {
+    if (!wallet.account || !config.api.token) return;
+    setTransfersLoading(true);
+    try {
+      const result = await getTransfers(wallet.account, null, { limit: 20 });
+      if (result && result.transfers) {
+        setTransfers(result.transfers);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch transfer history:", err.message);
+    } finally {
+      setTransfersLoading(false);
+    }
+  }, [wallet.account]);
+
+  useEffect(() => {
+    fetchTransfers();
+  }, [fetchTransfers]);
 
   if (!wallet.account) {
     return (
@@ -199,8 +226,76 @@ export default function Token({ wallet }) {
         </form>
       </div>
 
+      {/* Transfer History */}
+      <div className="section">
+        <h2>Transfer History</h2>
+        {!config.api.token ? (
+          <div className="card" style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>
+            <p>Transfer history requires the Token API backend.</p>
+            <p style={{ fontSize: "12px", marginTop: "8px" }}>
+              Set REACT_APP_TOKEN_API in your .env after deploying the nge-token-api stack.
+              In the meantime, view history on{" "}
+              <a href={addressUrl(wallet.account)} target="_blank" rel="noopener noreferrer">
+                Etherscan
+              </a>.
+            </p>
+          </div>
+        ) : transfersLoading ? (
+          <div className="card" style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>
+            Loading transfers...
+          </div>
+        ) : transfers.length === 0 ? (
+          <div className="card" style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>
+            No transfers found for this address.
+          </div>
+        ) : (
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Address</th>
+                  <th>Amount</th>
+                  <th>Tx Hash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transfers.map((tx, i) => {
+                  const isSend = tx.from?.toLowerCase() === wallet.account?.toLowerCase();
+                  return (
+                    <tr key={`${tx.transactionHash}-${tx.logIndex}-${i}`}>
+                      <td>
+                        <span style={{ color: isSend ? "#ef4444" : "#22c55e", fontWeight: 600 }}>
+                          {isSend ? "Sent" : "Received"}
+                        </span>
+                      </td>
+                      <td>
+                        <a
+                          href={addressUrl(isSend ? tx.to : tx.from)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mono"
+                        >
+                          {truncateAddress(isSend ? tx.to : tx.from)}
+                        </a>
+                      </td>
+                      <td>{formatNumber(tx.value ? (Number(tx.value) / 1e18).toString() : "0")} NGE</td>
+                      <td>
+                        <a href={txUrl(tx.transactionHash)} target="_blank" rel="noopener noreferrer" className="mono">
+                          {truncateAddress(tx.transactionHash)}
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div style={{ textAlign: "right", marginTop: "16px" }}>
-        <button className="btn-outline" onClick={refresh} disabled={loading}>
+        <button className="btn-outline" onClick={() => { refresh(); fetchTransfers(); }} disabled={loading}>
           Refresh Data
         </button>
       </div>
