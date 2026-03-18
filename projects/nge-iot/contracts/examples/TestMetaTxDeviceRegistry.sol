@@ -1,16 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "../iot/MetaTxDeviceRegistry.sol";
 
-contract TestMetaTxDeviceRegistry is Ownable, MetaTxDeviceRegistry {
+/**
+ * @dev Concrete test harness for MetaTxDeviceRegistry.
+ *      Uses a simple admin address instead of Ownable to avoid
+ *      _msgSender/_msgData override conflicts with ERC2771Context.
+ */
+contract TestMetaTxDeviceRegistry is MetaTxDeviceRegistry {
+    address private _admin;
+
     constructor(address trustedForwarder)
-        Ownable(msg.sender)
         MetaTxDeviceRegistry(trustedForwarder)
-    {}
+    {
+        _admin = _msgSender();
+    }
+
+    function admin() external view returns (address) {
+        return _admin;
+    }
 
     function _authorizeRegistryAdmin() internal view override {
-        _checkOwner();
+        require(_msgSender() == _admin, "not admin");
     }
 }

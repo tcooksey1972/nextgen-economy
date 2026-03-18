@@ -47,8 +47,8 @@ describe("MetaTxDeviceRegistry", function () {
       expect(await registry.totalSupply()).to.equal(0);
     });
 
-    it("sets deployer as owner", async function () {
-      expect(await registry.owner()).to.equal(owner.address);
+    it("sets deployer as admin", async function () {
+      expect(await registry.admin()).to.equal(owner.address);
     });
   });
 
@@ -128,7 +128,7 @@ describe("MetaTxDeviceRegistry", function () {
     it("reverts when called by non-owner", async function () {
       await expect(
         registry.connect(attacker).registerDevice(alice.address, FW_HASH, DEVICE_URI)
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
     });
   });
 
@@ -201,7 +201,7 @@ describe("MetaTxDeviceRegistry", function () {
     it("reverts when non-admin reactivates", async function () {
       await expect(
         registry.connect(attacker).reactivateDevice(0)
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
     });
 
     it("can reactivate a suspended device", async function () {
@@ -245,7 +245,7 @@ describe("MetaTxDeviceRegistry", function () {
     it("reverts when non-admin suspends", async function () {
       await expect(
         registry.connect(attacker).suspendDevice(0)
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
     });
   });
 
@@ -281,7 +281,7 @@ describe("MetaTxDeviceRegistry", function () {
     it("reverts when non-admin updates firmware", async function () {
       await expect(
         registry.connect(attacker).updateFirmware(0, FW_HASH_V2)
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
     });
 
     it("can update firmware multiple times", async function () {
@@ -406,32 +406,32 @@ describe("MetaTxDeviceRegistry", function () {
     it("all admin functions revert for non-owner", async function () {
       await expect(
         registry.connect(attacker).registerDevice(bob.address, FW_HASH, "uri")
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
 
       await expect(
         registry.connect(attacker).reactivateDevice(0)
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
 
       await expect(
         registry.connect(attacker).suspendDevice(0)
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
 
       await expect(
         registry.connect(attacker).updateFirmware(0, FW_HASH_V2)
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
     });
 
     it("device owner (non-admin) cannot call admin functions", async function () {
       // alice owns device 0 but is not the contract owner
       await expect(
         registry.connect(alice).registerDevice(bob.address, FW_HASH, "uri")
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
 
       await registry.connect(alice).deactivateDevice(0);
 
       await expect(
         registry.connect(alice).reactivateDevice(0)
-      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWith("not admin");
     });
   });
 
