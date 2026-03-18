@@ -54,6 +54,22 @@ export async function getTransfers(address, tokens, { limit, lastKey } = {}) {
   return apiFetch(config.api.token, "/transfers", { address, limit, lastKey }, tokens);
 }
 
+// ─── Governance API ───────────────────────────────────────
+
+/**
+ * Get governance proposals from the indexer.
+ */
+export async function getProposals(tokens, { limit } = {}) {
+  return apiFetch(config.api.token, "/proposals", { limit }, tokens);
+}
+
+/**
+ * Get votes for a specific proposal.
+ */
+export async function getVotesForProposal(proposalId, tokens, { limit } = {}) {
+  return apiFetch(config.api.token, "/votes", { proposalId, limit }, tokens);
+}
+
 // ─── Sentinel API ──────────────────────────────────────
 
 /**

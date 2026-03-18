@@ -16,6 +16,8 @@ const config = {
     token: process.env.REACT_APP_TOKEN_ADDRESS || "",
     sentinel: process.env.REACT_APP_SENTINEL_ADDRESS || "",
     iot: process.env.REACT_APP_IOT_ADDRESS || "",
+    governor: process.env.REACT_APP_GOVERNOR_ADDRESS || "",
+    timelock: process.env.REACT_APP_TIMELOCK_ADDRESS || "",
   },
 
   // API endpoints (set after AWS deploy)
