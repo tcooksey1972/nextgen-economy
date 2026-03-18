@@ -5,6 +5,7 @@
   "scripts": {
     "compile": "npx hardhat compile",
     "test": "npx hardhat test",
+    "coverage": "npx hardhat coverage",
     "node": "npx hardhat node"
   },
   "keywords": ["solidity", "use-cases", "web3", "iot", "defi", "governance"],

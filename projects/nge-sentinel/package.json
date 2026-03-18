@@ -8,6 +8,7 @@
     "compile:local": "node scripts/compile.js",
     "test": "npx hardhat test",
     "test:local": "node scripts/test.js",
+    "coverage": "npx hardhat coverage",
     "node": "npx hardhat node"
   },
   "keywords": ["solidity", "security", "smart-contracts", "openzeppelin", "ethereum"],
