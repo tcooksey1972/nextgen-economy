@@ -11,6 +11,7 @@
  * Network configs use env vars so secrets stay out of source control.
  * Set DEPLOYER_PRIVATE_KEY and ETH_RPC_URL before deploying.
  */
+require("dotenv").config();
 require("@nomicfoundation/hardhat-toolbox");
 
 /** @type import('hardhat/config').HardhatUserConfig */
