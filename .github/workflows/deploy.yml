@@ -130,11 +130,42 @@ jobs:
           address=$(grep -oP '0x[0-9a-fA-F]{40}' deploy-output.txt | head -1)
           echo "address=$address" >> "$GITHUB_OUTPUT"
 
+  deploy-governance-contracts:
+    name: Deploy Governance Contracts
+    if: inputs.deploy_contracts
+    runs-on: ubuntu-latest
+    outputs:
+      governance_token_address: ${{ steps.deploy.outputs.governance_token }}
+      timelock_address: ${{ steps.deploy.outputs.timelock }}
+      governor_address: ${{ steps.deploy.outputs.governor }}
+    defaults:
+      run:
+        working-directory: use-cases
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: use-cases/package-lock.json
+      - run: npm ci
+      - name: Compile contracts
+        run: npx hardhat compile
+      - name: Deploy to Sepolia
+        id: deploy
+        run: |
+          npx hardhat run platform-governance/scripts/deploy.js --network sepolia 2>&1 | tee deploy-output.txt
+          # Extract the three addresses in order: Token, Timelock, Governor
+          addresses=($(grep -oP '0x[0-9a-fA-F]{40}' deploy-output.txt | head -4))
+          echo "governance_token=${addresses[1]}" >> "$GITHUB_OUTPUT"
+          echo "timelock=${addresses[2]}" >> "$GITHUB_OUTPUT"
+          echo "governor=${addresses[3]}" >> "$GITHUB_OUTPUT"
+
   # ─── Stage 2: Store Addresses in SSM ───────────────────
   store-addresses:
     name: Store Contract Addresses in SSM
     if: inputs.deploy_contracts
-    needs: [deploy-sentinel-contract, deploy-iot-contract, deploy-token-contract]
+    needs: [deploy-sentinel-contract, deploy-iot-contract, deploy-token-contract, deploy-governance-contracts]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,6 +186,12 @@ jobs:
       - name: Store token address
         if: needs.deploy-token-contract.outputs.contract_address
         run: node scripts/ssm-store.js --project token --address ${{ needs.deploy-token-contract.outputs.contract_address }}
+      - name: Store governor address
+        if: needs.deploy-governance-contracts.outputs.governor_address
+        run: node scripts/ssm-store.js --project governor --address ${{ needs.deploy-governance-contracts.outputs.governor_address }}
+      - name: Store timelock address
+        if: needs.deploy-governance-contracts.outputs.timelock_address
+        run: node scripts/ssm-store.js --project timelock --address ${{ needs.deploy-governance-contracts.outputs.timelock_address }}
       - name: Store RPC URL
         run: node scripts/ssm-store.js --project token --address 0x0000000000000000000000000000000000000000 --rpc-url ${{ secrets.ETH_RPC_URL }}
 
@@ -330,6 +367,8 @@ jobs:
           echo "REACT_APP_TOKEN_ADDRESS=$(aws ssm get-parameter --name /nge/token/contract-address --query Parameter.Value --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
           echo "REACT_APP_IOT_ADDRESS=$(aws ssm get-parameter --name /nge/iot/contract-address --query Parameter.Value --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
           echo "REACT_APP_SENTINEL_ADDRESS=$(aws ssm get-parameter --name /nge/sentinel/contract-address --query Parameter.Value --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
+          echo "REACT_APP_GOVERNOR_ADDRESS=$(aws ssm get-parameter --name /nge/governor/contract-address --query Parameter.Value --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
+          echo "REACT_APP_TIMELOCK_ADDRESS=$(aws ssm get-parameter --name /nge/timelock/contract-address --query Parameter.Value --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
           echo "REACT_APP_TOKEN_API=$(aws cloudformation describe-stacks --stack-name nge-token-api-${{ inputs.environment }} --query "Stacks[0].Outputs[?OutputKey=='TokenApiEndpoint'].OutputValue" --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
           echo "REACT_APP_SENTINEL_API=$(aws cloudformation describe-stacks --stack-name nge-sentinel-monitor-${{ inputs.environment }} --query "Stacks[0].Outputs[?OutputKey=='SentinelApiEndpoint'].OutputValue" --output text 2>/dev/null || echo '')" >> $GITHUB_ENV
       - name: Build frontend
@@ -337,6 +376,8 @@ jobs:
           REACT_APP_TOKEN_ADDRESS: ${{ env.REACT_APP_TOKEN_ADDRESS }}
           REACT_APP_IOT_ADDRESS: ${{ env.REACT_APP_IOT_ADDRESS }}
           REACT_APP_SENTINEL_ADDRESS: ${{ env.REACT_APP_SENTINEL_ADDRESS }}
+          REACT_APP_GOVERNOR_ADDRESS: ${{ env.REACT_APP_GOVERNOR_ADDRESS }}
+          REACT_APP_TIMELOCK_ADDRESS: ${{ env.REACT_APP_TIMELOCK_ADDRESS }}
           REACT_APP_TOKEN_API: ${{ env.REACT_APP_TOKEN_API }}
           REACT_APP_SENTINEL_API: ${{ env.REACT_APP_SENTINEL_API }}
           REACT_APP_CHAIN_ID: "11155111"
