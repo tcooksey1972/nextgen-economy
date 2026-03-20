@@ -11,7 +11,13 @@
     "coverage": "npx hardhat coverage",
     "node": "npx hardhat node"
   },
-  "keywords": ["solidity", "security", "smart-contracts", "openzeppelin", "ethereum"],
+  "keywords": [
+    "solidity",
+    "security",
+    "smart-contracts",
+    "openzeppelin",
+    "ethereum"
+  ],
   "author": "Cloud Creations LLC",
   "license": "MIT",
   "repository": {
@@ -23,5 +29,8 @@
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.6.1",
     "hardhat": "^2.28.6"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1"
   }
 }

@@ -9,6 +9,8 @@
  *   node scripts/ssm-store.js --project sentinel --address 0x1234...
  *   node scripts/ssm-store.js --project iot --address 0x5678...
  *   node scripts/ssm-store.js --project token --address 0x9abc...
+ *   node scripts/ssm-store.js --project governor --address 0xdef0...
+ *   node scripts/ssm-store.js --project timelock --address 0x1111...
  *   node scripts/ssm-store.js --project sentinel --address 0x1234... --env staging
  *
  * Requires AWS CLI configured with appropriate IAM permissions.
@@ -17,6 +19,8 @@
  *   /nge/sentinel/contract-address
  *   /nge/iot/contract-address
  *   /nge/token/contract-address
+ *   /nge/governor/contract-address
+ *   /nge/timelock/contract-address
  *   /nge/common/eth-rpc-url        (shared across projects)
  */
 const { execSync } = require("child_process");
@@ -25,6 +29,8 @@ const SSM_PATHS = {
   sentinel: "/nge/sentinel/contract-address",
   iot: "/nge/iot/contract-address",
   token: "/nge/token/contract-address",
+  governor: "/nge/governor/contract-address",
+  timelock: "/nge/timelock/contract-address",
 };
 
 function parseArgs() {
@@ -55,7 +61,7 @@ function main() {
   const args = parseArgs();
 
   if (!args.project || !args.address) {
-    console.error("Usage: node scripts/ssm-store.js --project <sentinel|iot|token> --address <0x...>");
+    console.error("Usage: node scripts/ssm-store.js --project <sentinel|iot|token|governor|timelock> --address <0x...>");
     console.error("       node scripts/ssm-store.js --rpc-url <https://...>  (to set shared RPC URL)");
     process.exit(1);
   }
@@ -74,7 +80,7 @@ function main() {
   if (args.project && args.address) {
     const path = SSM_PATHS[args.project];
     if (!path) {
-      console.error(`Unknown project: ${args.project}. Use: sentinel, iot, or token`);
+      console.error(`Unknown project: ${args.project}. Use: sentinel, iot, token, governor, or timelock`);
       process.exit(1);
     }
 

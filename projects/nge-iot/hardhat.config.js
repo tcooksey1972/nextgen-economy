@@ -5,6 +5,7 @@
  * Solidity 0.8.26 matches the nge-sentinel project for cross-project
  * composability. Optimizer enabled with 200 runs.
  */
+require("dotenv").config();
 require("@nomicfoundation/hardhat-toolbox");
 
 /** @type import('hardhat/config').HardhatUserConfig */
