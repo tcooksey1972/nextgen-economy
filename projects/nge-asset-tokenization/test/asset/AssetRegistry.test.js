@@ -1,3 +1,11 @@
+/**
+ * @file AssetRegistry.test.js
+ * @description Tests for the AssetRegistry module via the SimpleAssetManager contract.
+ *
+ * Covers: asset registration (unique + fungible), metadata storage, sequential IDs,
+ * status management, location/department updates, disposal with burn, pause/unpause,
+ * access control, and view edge cases.
+ */
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 

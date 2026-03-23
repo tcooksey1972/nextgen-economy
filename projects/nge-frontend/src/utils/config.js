@@ -18,12 +18,14 @@ const config = {
     iot: process.env.REACT_APP_IOT_ADDRESS || "",
     governor: process.env.REACT_APP_GOVERNOR_ADDRESS || "",
     timelock: process.env.REACT_APP_TIMELOCK_ADDRESS || "",
+    assetManager: process.env.REACT_APP_ASSET_MANAGER_ADDRESS || "",
   },
 
   // API endpoints (set after AWS deploy)
   api: {
     token: process.env.REACT_APP_TOKEN_API || "",
     sentinel: process.env.REACT_APP_SENTINEL_API || "",
+    assets: process.env.REACT_APP_ASSETS_API || "",
   },
 
   // Block explorer

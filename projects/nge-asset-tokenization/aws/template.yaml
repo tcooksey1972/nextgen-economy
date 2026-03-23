@@ -1,0 +1,260 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  NGE Asset Tokenization API — Serverless backend for corporate asset
+  management. Indexes on-chain asset events, serves REST API for the
+  frontend dashboard, and sends alerts for controlled-item discrepancies.
+
+# ─────────────────────────────────────────────────────────
+#  Parameters — configure at deploy time
+# ─────────────────────────────────────────────────────────
+
+Parameters:
+  EthRpcUrl:
+    Type: String
+    Description: >
+      Ethereum JSON-RPC endpoint (e.g., Alchemy or Infura Sepolia URL).
+    NoEcho: true
+
+  ContractAddress:
+    Type: String
+    Description: Deployed SimpleAssetManager or ControlledAssetManager address.
+    AllowedPattern: "^0x[0-9a-fA-F]{40}$"
+
+  AlertEmail:
+    Type: String
+    Description: Email for SNS alerts (discrepancies, large disposals).
+    AllowedPattern: "^[^@]+@[^@]+\\.[^@]+$"
+
+  ChainId:
+    Type: Number
+    Default: 11155111
+    Description: Ethereum chain ID (11155111 = Sepolia).
+
+  PollBlockRange:
+    Type: Number
+    Default: 100
+    Description: Number of blocks to look back on first poll.
+
+# ─────────────────────────────────────────────────────────
+#  Global settings for all Lambda functions
+# ─────────────────────────────────────────────────────────
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ETH_RPC_URL: !Ref EthRpcUrl
+        CONTRACT_ADDRESS: !Ref ContractAddress
+        CHAIN_ID: !Ref ChainId
+        ASSETS_TABLE: !Ref AssetsTable
+        EVENTS_TABLE: !Ref EventsTable
+        STATE_TABLE: !Ref StateTable
+        ALERT_TOPIC_ARN: !Ref AlertTopic
+        POLL_BLOCK_RANGE: !Ref PollBlockRange
+
+Resources:
+
+  # ─────────────────────────────────────────────────────────
+  #  DynamoDB Tables
+  # ─────────────────────────────────────────────────────────
+
+  AssetsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: AssetRegistry
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: AssetEvents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: AssetState
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  # ─────────────────────────────────────────────────────────
+  #  SNS Topic for Alerts
+  # ─────────────────────────────────────────────────────────
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: AssetAlerts
+      DisplayName: NGE Asset Tokenization Alerts
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ─────────────────────────────────────────────────────────
+  #  Lambda Functions
+  # ─────────────────────────────────────────────────────────
+
+  EventIndexerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: asset-event-indexer
+      Description: Polls blockchain for asset events (every 1 min).
+      Handler: lambdas/eventIndexer.handler
+      CodeUri: .
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssetsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StateTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertTopic.TopicName
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Description: Poll for new asset contract events every minute
+            Enabled: true
+
+  ApiHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: asset-api-handler
+      Description: REST API for the asset management dashboard.
+      Handler: lambdas/apiHandler.handler
+      CodeUri: .
+      Timeout: 10
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref AssetsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref StateTable
+      Events:
+        GetAssets:
+          Type: Api
+          Properties:
+            Path: /assets
+            Method: GET
+            RestApiId: !Ref AssetApi
+        GetAssetDetail:
+          Type: Api
+          Properties:
+            Path: /assets/{tokenId}
+            Method: GET
+            RestApiId: !Ref AssetApi
+        GetEvents:
+          Type: Api
+          Properties:
+            Path: /events
+            Method: GET
+            RestApiId: !Ref AssetApi
+        GetLedger:
+          Type: Api
+          Properties:
+            Path: /ledger/{tokenId}
+            Method: GET
+            RestApiId: !Ref AssetApi
+        ResolveIdentifier:
+          Type: Api
+          Properties:
+            Path: /resolve/{identifierHash}
+            Method: GET
+            RestApiId: !Ref AssetApi
+        GetHealth:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: GET
+            RestApiId: !Ref AssetApi
+        Options:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: OPTIONS
+            RestApiId: !Ref AssetApi
+
+  # ─────────────────────────────────────────────────────────
+  #  API Gateway
+  # ─────────────────────────────────────────────────────────
+
+  AssetApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: AssetTokenizationAPI
+      StageName: prod
+      Description: REST API for the NGE Asset Tokenization dashboard.
+      Cors:
+        AllowMethods: "'GET,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+# ─────────────────────────────────────────────────────────
+#  Outputs
+# ─────────────────────────────────────────────────────────
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${AssetApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+
+  AlertTopicArn:
+    Description: SNS Topic ARN for alert subscriptions
+    Value: !Ref AlertTopic
+
+  AssetsTableName:
+    Description: DynamoDB table for asset registry
+    Value: !Ref AssetsTable
+
+  EventsTableName:
+    Description: DynamoDB table for asset events
+    Value: !Ref EventsTable
+
+  StateTableName:
+    Description: DynamoDB table for indexer state
+    Value: !Ref StateTable

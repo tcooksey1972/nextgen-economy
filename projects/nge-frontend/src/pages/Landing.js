@@ -78,9 +78,9 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Three Pillars */}
+      {/* Product Pillars */}
       <section style={sectionStyle}>
-        <h2 style={sectionHeadingStyle}>Three Products, One Platform</h2>
+        <h2 style={sectionHeadingStyle}>Four Products, One Platform</h2>
         <div style={pillarGridStyle}>
           {/* Sentinel */}
           <div className="card" style={pillarCardStyle}>
@@ -160,6 +160,33 @@ export default function Landing() {
             </ul>
             <Link to="/use-cases" style={{ ...pillarLinkStyle, color: "var(--warning)" }}>
               See governance scenarios &rarr;
+            </Link>
+          </div>
+          {/* Asset Tokenization */}
+          <div className="card" style={pillarCardStyle}>
+            <div style={pillarIconStyle}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--error)" strokeWidth="1.5">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <path d="M8 21h8M12 17v4" />
+                <path d="M7 8h2M7 11h4" />
+              </svg>
+            </div>
+            <h3 style={pillarTitleStyle}>Asset Tokenization</h3>
+            <p style={{ ...pillarSubtitle, color: "var(--error)" }}>Corporate Asset Management</p>
+            <p style={pillarBodyStyle}>
+              Tokenize every corporate asset as ERC-1155 tokens — equipment, inventory,
+              ammunition, narcotics. Link physical items via QR codes, automate
+              depreciation, and maintain immutable chain-of-custody records.
+            </p>
+            <ul style={featureListStyle}>
+              <li>ERC-1155 multi-token registry (unique + fungible)</li>
+              <li>On-chain accounting ledger with depreciation</li>
+              <li>QR code / UPN / barcode identifier resolution</li>
+              <li>Role-based controlled item management</li>
+              <li>Physical count inspection with discrepancy alerts</li>
+            </ul>
+            <Link to="/assets" style={{ ...pillarLinkStyle, color: "var(--error)" }}>
+              Try the asset demo &rarr;
             </Link>
           </div>
         </div>

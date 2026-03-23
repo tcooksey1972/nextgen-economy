@@ -1,3 +1,15 @@
+/**
+ * @file IdentifierResolver.test.js
+ * @description Tests for the IdentifierResolver module via the SimpleAssetManager contract.
+ *
+ * Covers: linking QR codes / UPNs / serial numbers / barcodes to token IDs,
+ * unlinking, batch linking, resolve lookups, duplicate prevention, access control,
+ * and end-to-end scan-to-resolve workflow.
+ *
+ * Identifier hashes are computed as keccak256(abi.encodePacked(rawIdentifierString))
+ * to match the on-chain storage pattern. Off-chain systems generate QR/barcode labels
+ * containing the raw string; scanning + hashing resolves to the token ID.
+ */
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 

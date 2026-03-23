@@ -1,3 +1,11 @@
+/**
+ * @file AssetLedger.test.js
+ * @description Tests for the AssetLedger module via the SimpleAssetManager contract.
+ *
+ * Covers: acquisition recording, straight-line depreciation (monthly, full lifecycle,
+ * rounding remainder), revaluation (up/down/no-op), impairment, disposal with
+ * gain/loss, department transfers, and journal entry storage.
+ */
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 

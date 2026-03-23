@@ -100,6 +100,12 @@ export default function Navbar({ account, chainId, isCorrectChain, onConnect, on
         >
           Demo
         </NavLink>
+        <NavLink
+          to="/assets"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Assets
+        </NavLink>
 
         {/* Divider between marketing and app */}
         <div style={dividerStyle} />

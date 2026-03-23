@@ -92,3 +92,47 @@ export async function getSentinelStatus(tokens) {
 export async function getSentinelEvents(tokens, { limit } = {}) {
   return apiFetch(config.api.sentinel, "/events", { limit }, tokens);
 }
+
+// ─── Asset Tokenization API ──────────────────────────
+
+/**
+ * Get all registered assets.
+ */
+export async function getAssets(tokens, { limit } = {}) {
+  return apiFetch(config.api.assets, "/assets", { limit }, tokens);
+}
+
+/**
+ * Get single asset detail by token ID.
+ */
+export async function getAssetDetail(tokenId, tokens) {
+  return apiFetch(config.api.assets, `/assets/${tokenId}`, {}, tokens);
+}
+
+/**
+ * Get recent asset events (optional type filter).
+ */
+export async function getAssetEvents(tokens, { type, limit } = {}) {
+  return apiFetch(config.api.assets, "/events", { type, limit }, tokens);
+}
+
+/**
+ * Get journal ledger entries for an asset.
+ */
+export async function getAssetLedger(tokenId, tokens, { limit } = {}) {
+  return apiFetch(config.api.assets, `/ledger/${tokenId}`, { limit }, tokens);
+}
+
+/**
+ * Resolve a QR/UPN/barcode identifier hash to an asset.
+ */
+export async function resolveIdentifier(identifierHash, tokens) {
+  return apiFetch(config.api.assets, `/resolve/${identifierHash}`, {}, tokens);
+}
+
+/**
+ * Get asset system health status.
+ */
+export async function getAssetHealth(tokens) {
+  return apiFetch(config.api.assets, "/health", {}, tokens);
+}
