@@ -139,7 +139,8 @@ export async function getAssetHealth(tokens) {
 
 /**
  * Trigger on-demand event sync (indexes new blocks from chain).
- * Only call when you need fresh data — avoids unnecessary polling costs.
+ * Rate-limited server-side to 1 call per 10 minutes (600s).
+ * Returns { retryAfter } on 429 so the UI can show a countdown.
  */
 export async function syncAssetEvents(tokens) {
   if (!config.api.assets) return null;
@@ -147,6 +148,10 @@ export async function syncAssetEvents(tokens) {
   const headers = { "Content-Type": "application/json" };
   if (tokens?.idToken) headers.Authorization = `Bearer ${tokens.idToken}`;
   const res = await fetch(url.toString(), { method: "POST", headers });
+  const body = await res.json();
+  if (res.status === 429) {
+    return { rateLimited: true, retryAfter: body.retryAfter || 600 };
+  }
   if (!res.ok) throw new Error(`Sync failed: ${res.status}`);
-  return res.json();
+  return body;
 }

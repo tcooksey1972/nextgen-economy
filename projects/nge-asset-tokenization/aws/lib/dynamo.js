@@ -146,8 +146,32 @@ async function getLastPolledBlock() {
   return result.Item?.blockNumber || null;
 }
 
+// ─── Rate Limiting (sync cooldown) ─────────────────────
+
+async function putLastSyncTime(epochSeconds) {
+  const { PutCommand } = require("@aws-sdk/lib-dynamodb");
+  await getClient().send(new PutCommand({
+    TableName: config.stateTable,
+    Item: {
+      pk: "SYNC_RATE_LIMIT",
+      sk: "LATEST",
+      syncTime: epochSeconds,
+    },
+  }));
+}
+
+async function getLastSyncTime() {
+  const { GetCommand } = require("@aws-sdk/lib-dynamodb");
+  const result = await getClient().send(new GetCommand({
+    TableName: config.stateTable,
+    Key: { pk: "SYNC_RATE_LIMIT", sk: "LATEST" },
+  }));
+  return result.Item?.syncTime || null;
+}
+
 module.exports = {
   putAsset, getAsset, listAssets,
   putEvent, getRecentEvents, getAllRecentEvents,
   putLastPolledBlock, getLastPolledBlock,
+  putLastSyncTime, getLastSyncTime,
 };

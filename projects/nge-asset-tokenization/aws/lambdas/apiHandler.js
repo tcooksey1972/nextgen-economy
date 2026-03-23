@@ -145,8 +145,21 @@ exports.handler = async (event) => {
       });
     }
 
-    // POST /sync — on-demand event indexing
+    // POST /sync — on-demand event indexing (rate-limited: 1 call per 10 min)
     if (path === "/sync" && method === "POST") {
+      // Server-side rate limit: check last sync timestamp
+      const lastSync = await dynamo.getLastSyncTime();
+      const now = Math.floor(Date.now() / 1000);
+      const SYNC_COOLDOWN_SECONDS = 600; // 10 minutes
+      if (lastSync && (now - lastSync) < SYNC_COOLDOWN_SECONDS) {
+        const retryAfter = SYNC_COOLDOWN_SECONDS - (now - lastSync);
+        return respond(429, {
+          error: "Sync rate limited",
+          message: `Please wait ${retryAfter}s before syncing again`,
+          retryAfter,
+        });
+      }
+
       const provider = getProvider();
       const contract = getContract();
       const currentBlock = await provider.getBlockNumber();
@@ -204,6 +217,7 @@ exports.handler = async (event) => {
       }
 
       await dynamo.putLastPolledBlock(currentBlock);
+      await dynamo.putLastSyncTime(now);
       return respond(200, { processed: totalProcessed, fromBlock, toBlock: currentBlock });
     }
 
