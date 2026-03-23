@@ -136,3 +136,17 @@ export async function resolveIdentifier(identifierHash, tokens) {
 export async function getAssetHealth(tokens) {
   return apiFetch(config.api.assets, "/health", {}, tokens);
 }
+
+/**
+ * Trigger on-demand event sync (indexes new blocks from chain).
+ * Only call when you need fresh data — avoids unnecessary polling costs.
+ */
+export async function syncAssetEvents(tokens) {
+  if (!config.api.assets) return null;
+  const url = new URL("/sync", config.api.assets);
+  const headers = { "Content-Type": "application/json" };
+  if (tokens?.idToken) headers.Authorization = `Bearer ${tokens.idToken}`;
+  const res = await fetch(url.toString(), { method: "POST", headers });
+  if (!res.ok) throw new Error(`Sync failed: ${res.status}`);
+  return res.json();
+}

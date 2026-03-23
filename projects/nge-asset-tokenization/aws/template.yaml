@@ -135,14 +135,14 @@ Resources:
   #  Lambda Functions
   # ─────────────────────────────────────────────────────────
 
-  EventIndexerFunction:
+  ApiHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: asset-event-indexer
-      Description: Polls blockchain for asset events (every 1 min).
-      Handler: lambdas/eventIndexer.handler
+      FunctionName: asset-api-handler
+      Description: REST API for the asset management dashboard.
+      Handler: lambdas/apiHandler.handler
       CodeUri: .
-      Timeout: 60
+      Timeout: 30
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AssetsTable
@@ -153,29 +153,12 @@ Resources:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt AlertTopic.TopicName
       Events:
-        Schedule:
-          Type: Schedule
+        PostSync:
+          Type: Api
           Properties:
-            Schedule: rate(1 minute)
-            Description: Poll for new asset contract events every minute
-            Enabled: true
-
-  ApiHandlerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: asset-api-handler
-      Description: REST API for the asset management dashboard.
-      Handler: lambdas/apiHandler.handler
-      CodeUri: .
-      Timeout: 10
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref AssetsTable
-        - DynamoDBReadPolicy:
-            TableName: !Ref EventsTable
-        - DynamoDBReadPolicy:
-            TableName: !Ref StateTable
-      Events:
+            Path: /sync
+            Method: POST
+            RestApiId: !Ref AssetApi
         GetAssets:
           Type: Api
           Properties:
@@ -230,7 +213,7 @@ Resources:
       StageName: prod
       Description: REST API for the NGE Asset Tokenization dashboard.
       Cors:
-        AllowMethods: "'GET,OPTIONS'"
+        AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: "'*'"
 

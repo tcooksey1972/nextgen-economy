@@ -238,6 +238,15 @@ nge-asset-tokenization/
 │   │   └── IdentifierResolver.test.js
 │   └── examples/
 │       └── ControlledAssetManager.test.js
+├── aws/
+│   ├── template.yaml                # SAM template (API Gateway, DynamoDB, SNS)
+│   ├── lambdas/
+│   │   └── apiHandler.js            # REST API + on-demand event sync
+│   └── lib/
+│       ├── config.js                # Environment configuration
+│       ├── contract.js              # ethers.js contract client
+│       ├── dynamo.js                # DynamoDB helpers
+│       └── alerts.js                # SNS alert publisher
 ├── scripts/
 │   ├── compile.js                    # Offline solcjs compiler
 │   ├── test.js                       # Offline test runner
