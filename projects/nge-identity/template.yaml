@@ -1,0 +1,496 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  NGE Identity Platform — Serverless backend for Decentralized Identity,
+  Verifiable Credentials, Skills Marketplace, Sensor Data Anchoring, and
+  FHIR Healthcare Integration. Part of the NextGen Economy platform by
+  Cloud Creations LLC.
+
+# ─────────────────────────────────────────────────────────
+#  Parameters
+# ─────────────────────────────────────────────────────────
+
+Parameters:
+  EthRpcUrl:
+    Type: String
+    Description: Ethereum JSON-RPC endpoint (Base Sepolia or Alchemy/Infura).
+    NoEcho: true
+
+  DIDRegistryAddress:
+    Type: String
+    Description: Deployed DIDRegistry (SimpleDIDRegistry) contract address.
+    AllowedPattern: "^0x[0-9a-fA-F]{40}$"
+
+  CredentialRegistryAddress:
+    Type: String
+    Description: Deployed CredentialRegistry contract address.
+    AllowedPattern: "^0x[0-9a-fA-F]{40}$"
+
+  MarketplaceAddress:
+    Type: String
+    Description: Deployed SkillsMarketplace contract address.
+    AllowedPattern: "^0x[0-9a-fA-F]{40}$"
+
+  SensorAnchorAddress:
+    Type: String
+    Description: Deployed SensorDataAnchor contract address.
+    AllowedPattern: "^0x[0-9a-fA-F]{40}$"
+
+  SignerPrivateKey:
+    Type: String
+    Description: Platform signer private key (use Secrets Manager in production).
+    NoEcho: true
+
+  AlertEmail:
+    Type: String
+    Description: Email for platform alert notifications.
+    AllowedPattern: "^[^@]+@[^@]+\\.[^@]+$"
+
+  ChainId:
+    Type: Number
+    Default: 84532
+    Description: Chain ID (84532 = Base Sepolia, 11155111 = Sepolia).
+
+  FHIRServerUrl:
+    Type: String
+    Default: ""
+    Description: FHIR R4 server URL for healthcare credential verification (optional).
+
+# ─────────────────────────────────────────────────────────
+#  Globals
+# ─────────────────────────────────────────────────────────
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ETH_RPC_URL: !Ref EthRpcUrl
+        DID_REGISTRY_ADDRESS: !Ref DIDRegistryAddress
+        CREDENTIAL_REGISTRY_ADDRESS: !Ref CredentialRegistryAddress
+        MARKETPLACE_ADDRESS: !Ref MarketplaceAddress
+        SENSOR_ANCHOR_ADDRESS: !Ref SensorAnchorAddress
+        SIGNER_PRIVATE_KEY: !Ref SignerPrivateKey
+        CHAIN_ID: !Ref ChainId
+        IDENTITY_TABLE: !Ref IdentityTable
+        CREDENTIAL_TABLE: !Ref CredentialTable
+        MARKETPLACE_TABLE: !Ref MarketplaceTable
+        SENSOR_TABLE: !Ref SensorTable
+        CREDENTIAL_BUCKET: !Ref CredentialBucket
+        FHIR_SERVER_URL: !Ref FHIRServerUrl
+
+Resources:
+
+  # ─── DynamoDB Tables (Single-Table Design per Module) ───
+
+  IdentityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: IdentityData
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  CredentialTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: CredentialData
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  MarketplaceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MarketplaceData
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  SensorTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SensorData
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ─── S3 Bucket for Encrypted Credentials ───
+
+  CredentialBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "nge-credentials-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ─── SNS Alert Topic ───
+
+  PlatformAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: NGEIdentityAlerts
+      DisplayName: NGE Identity Platform Alerts
+
+  PlatformAlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref PlatformAlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ─── Lambda Functions ───
+
+  IdentityApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-identity-api
+      Description: REST API for DID Identity operations (create, resolve, update, deactivate, biometric bind).
+      Handler: aws/lambda/identityApi.handler
+      CodeUri: .
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IdentityTable
+      Events:
+        CreateDID:
+          Type: Api
+          Properties:
+            Path: /identity/did
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        ResolveDID:
+          Type: Api
+          Properties:
+            Path: /identity/did/{didHash}
+            Method: GET
+            RestApiId: !Ref IdentityApi
+        UpdateDID:
+          Type: Api
+          Properties:
+            Path: /identity/did/{didHash}
+            Method: PUT
+            RestApiId: !Ref IdentityApi
+        DeactivateDID:
+          Type: Api
+          Properties:
+            Path: /identity/did/{didHash}
+            Method: DELETE
+            RestApiId: !Ref IdentityApi
+        BindBiometric:
+          Type: Api
+          Properties:
+            Path: /identity/biometric/bind
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        IdentityHealth:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: GET
+            RestApiId: !Ref IdentityApi
+
+  CredentialApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-credential-api
+      Description: REST API for Verifiable Credential operations (issue, verify, revoke).
+      Handler: aws/lambda/credentialApi.handler
+      CodeUri: .
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CredentialTable
+        - S3CrudPolicy:
+            BucketName: !Ref CredentialBucket
+      Events:
+        IssueCredential:
+          Type: Api
+          Properties:
+            Path: /credentials/issue
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        VerifyCredential:
+          Type: Api
+          Properties:
+            Path: /credentials/{id}/verify
+            Method: GET
+            RestApiId: !Ref IdentityApi
+        RevokeCredential:
+          Type: Api
+          Properties:
+            Path: /credentials/{id}/revoke
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        HolderCredentials:
+          Type: Api
+          Properties:
+            Path: /credentials/holder/{didHash}
+            Method: GET
+            RestApiId: !Ref IdentityApi
+        GetCredential:
+          Type: Api
+          Properties:
+            Path: /credentials/{id}
+            Method: GET
+            RestApiId: !Ref IdentityApi
+
+  MarketplaceApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-marketplace-api
+      Description: REST API for Skills Marketplace operations (listings, engagement, reputation).
+      Handler: aws/lambda/marketplaceApi.handler
+      CodeUri: .
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MarketplaceTable
+      Events:
+        CreateListing:
+          Type: Api
+          Properties:
+            Path: /marketplace/listings
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        SearchListings:
+          Type: Api
+          Properties:
+            Path: /marketplace/listings
+            Method: GET
+            RestApiId: !Ref IdentityApi
+        GetListing:
+          Type: Api
+          Properties:
+            Path: /marketplace/listings/{id}
+            Method: GET
+            RestApiId: !Ref IdentityApi
+        WorkerReputation:
+          Type: Api
+          Properties:
+            Path: /marketplace/worker/{did}/reputation
+            Method: GET
+            RestApiId: !Ref IdentityApi
+
+  SensorApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-sensor-api
+      Description: REST API for Sensor Data operations (register, anchor, verify).
+      Handler: aws/lambda/sensorApi.handler
+      CodeUri: .
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SensorTable
+      Events:
+        RegisterDevice:
+          Type: Api
+          Properties:
+            Path: /sensors/register
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        AnchorBatch:
+          Type: Api
+          Properties:
+            Path: /sensors/anchor
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        DeviceBatches:
+          Type: Api
+          Properties:
+            Path: /sensors/{deviceDID}/batches
+            Method: GET
+            RestApiId: !Ref IdentityApi
+        VerifyReading:
+          Type: Api
+          Properties:
+            Path: /sensors/verify/{batchId}
+            Method: GET
+            RestApiId: !Ref IdentityApi
+
+  FHIRApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-fhir-api
+      Description: REST API for FHIR Healthcare Integration (credential verify, record anchor).
+      Handler: aws/lambda/fhirApi.handler
+      CodeUri: .
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CredentialTable
+        - S3CrudPolicy:
+            BucketName: !Ref CredentialBucket
+      Events:
+        FHIRVerify:
+          Type: Api
+          Properties:
+            Path: /fhir/credentials/verify
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        FHIRAnchor:
+          Type: Api
+          Properties:
+            Path: /fhir/records/anchor
+            Method: POST
+            RestApiId: !Ref IdentityApi
+        FHIRRecordVerify:
+          Type: Api
+          Properties:
+            Path: /fhir/records/{hash}/verify
+            Method: GET
+            RestApiId: !Ref IdentityApi
+
+  StateIdVerificationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-state-id-verification
+      Description: State ID verification — validates against state-specific schemas (Indiana BMV reference).
+      Handler: aws/lambda/stateIdVerification.handler
+      CodeUri: .
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IdentityTable
+
+  # ─── API Gateway ───
+
+  IdentityApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: NGEIdentityPlatformAPI
+      StageName: prod
+      Description: Unified REST API for the NGE Identity, Credential, Marketplace, Sensor, and FHIR modules.
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: NONE
+
+  # ─── API Gateway CORS Catch-All ───
+
+  OptionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: nge-identity-options
+      Description: CORS preflight handler.
+      Handler: index.handler
+      Runtime: nodejs22.x
+      InlineCode: |
+        exports.handler = async () => ({
+          statusCode: 200,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+          },
+          body: "",
+        });
+      Events:
+        Options:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: OPTIONS
+            RestApiId: !Ref IdentityApi
+
+# ─────────────────────────────────────────────────────────
+#  Outputs
+# ─────────────────────────────────────────────────────────
+
+Outputs:
+  ApiUrl:
+    Description: NGE Identity Platform API Gateway endpoint
+    Value: !Sub "https://${IdentityApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+
+  IdentityTableName:
+    Description: DynamoDB table for identity data
+    Value: !Ref IdentityTable
+
+  CredentialTableName:
+    Description: DynamoDB table for credential data
+    Value: !Ref CredentialTable
+
+  MarketplaceTableName:
+    Description: DynamoDB table for marketplace data
+    Value: !Ref MarketplaceTable
+
+  SensorTableName:
+    Description: DynamoDB table for sensor data
+    Value: !Ref SensorTable
+
+  CredentialBucketName:
+    Description: S3 bucket for encrypted credential storage
+    Value: !Ref CredentialBucket
+
+  AlertTopicArn:
+    Description: SNS Topic ARN for platform alerts
+    Value: !Ref PlatformAlertTopic
