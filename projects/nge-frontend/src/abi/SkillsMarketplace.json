@@ -1,0 +1,20 @@
+[
+  "function createListing(string calldata title, string calldata description, uint256 rate, uint8 listingType) external returns (uint256)",
+  "function cancelListing(uint256 listingId) external",
+  "function engageWorker(uint256 listingId) external payable returns (uint256)",
+  "function completeEngagement(uint256 engagementId, uint8 rating) external",
+  "function raiseDispute(uint256 engagementId) external",
+  "function withdraw() external",
+  "function getListing(uint256 listingId) external view returns (address worker, string memory title, string memory description, uint256 rate, uint8 listingType, bool active)",
+  "function getEngagement(uint256 engagementId) external view returns (uint256 listingId, address client, address worker, uint256 amount, uint8 status, uint8 rating)",
+  "function getWorkerRating(address worker) external view returns (uint256 totalRating, uint256 totalJobs)",
+  "function pendingWithdrawals(address account) external view returns (uint256)",
+  "function listingCount() external view returns (uint256)",
+  "function engagementCount() external view returns (uint256)",
+  "event ListingCreated(uint256 indexed listingId, address indexed worker, string title, uint8 listingType)",
+  "event ListingCancelled(uint256 indexed listingId)",
+  "event WorkerEngaged(uint256 indexed engagementId, uint256 indexed listingId, address indexed client, uint256 amount)",
+  "event EngagementCompleted(uint256 indexed engagementId, uint8 rating)",
+  "event DisputeRaised(uint256 indexed engagementId)",
+  "event Withdrawal(address indexed account, uint256 amount)"
+]

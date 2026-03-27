@@ -1,0 +1,19 @@
+[
+  "function createDID(bytes32 documentHash) external",
+  "function resolve(bytes32 didHash) external view returns (address controller, bytes32 documentHash, uint256 created, uint256 updated, bool active)",
+  "function isActive(bytes32 didHash) external view returns (bool)",
+  "function updateDocument(bytes32 didHash, bytes32 newDocumentHash) external",
+  "function deactivate(bytes32 didHash) external",
+  "function bindBiometric(bytes32 didHash, bytes32 biometricHash) external",
+  "function biometricToDID(bytes32 biometricHash) external view returns (bytes32)",
+  "function controllerOf(bytes32 didHash) external view returns (address)",
+  "function didCount() external view returns (uint256)",
+  "function changeController(bytes32 didHash, address newController) external",
+  "function adminDeactivate(bytes32 didHash) external",
+  "function getDIDsByController(address controller) external view returns (bytes32[] memory)",
+  "event DIDCreated(bytes32 indexed didHash, address indexed controller, bytes32 documentHash)",
+  "event DIDUpdated(bytes32 indexed didHash, bytes32 newDocumentHash)",
+  "event DIDDeactivated(bytes32 indexed didHash)",
+  "event BiometricBound(bytes32 indexed didHash, bytes32 biometricHash)",
+  "event ControllerChanged(bytes32 indexed didHash, address indexed newController)"
+]

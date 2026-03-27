@@ -12,6 +12,9 @@ import Devices from "./pages/Devices";
 import Governance from "./pages/Governance";
 import Onboard from "./pages/Onboard";
 import ColdChainDemo from "./pages/ColdChainDemo";
+import Identity from "./pages/Identity";
+import Credentials from "./pages/Credentials";
+import Marketplace from "./pages/Marketplace";
 
 const layoutStyle = {
   maxWidth: "1200px",
@@ -52,6 +55,9 @@ export default function App() {
           <Route path="/governance" element={<Governance wallet={wallet} auth={auth} />} />
           <Route path="/onboard" element={<Onboard wallet={wallet} auth={auth} />} />
           <Route path="/demo" element={<ColdChainDemo wallet={wallet} />} />
+          <Route path="/identity" element={<Identity wallet={wallet} auth={auth} />} />
+          <Route path="/credentials" element={<Credentials wallet={wallet} auth={auth} />} />
+          <Route path="/marketplace" element={<Marketplace wallet={wallet} auth={auth} />} />
         </Routes>
       </main>
     </div>

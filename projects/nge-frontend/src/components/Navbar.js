@@ -135,6 +135,24 @@ export default function Navbar({ account, chainId, isCorrectChain, onConnect, on
         >
           Governance
         </NavLink>
+        <NavLink
+          to="/identity"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Identity
+        </NavLink>
+        <NavLink
+          to="/credentials"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Credentials
+        </NavLink>
+        <NavLink
+          to="/marketplace"
+          style={({ isActive }) => (isActive ? activeLinkStyle : linkStyle)}
+        >
+          Marketplace
+        </NavLink>
       </div>
 
       <div style={walletStyle}>

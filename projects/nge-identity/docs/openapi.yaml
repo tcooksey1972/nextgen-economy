@@ -1,0 +1,639 @@
+openapi: 3.0.3
+info:
+  title: NGE Identity Platform API
+  description: |
+    REST API for the NextGen Economy Decentralized Identity, Credential,
+    Skills Marketplace, Sensor Data, and FHIR Healthcare Integration platform.
+    Built by Cloud Creations LLC.
+  version: 1.0.0
+  contact:
+    name: Cloud Creations LLC
+    url: https://github.com/tcooksey1972/nextgen-economy
+
+servers:
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com/prod
+    description: AWS API Gateway (SAM-deployed)
+    variables:
+      apiId:
+        default: xxxxx
+      region:
+        default: us-east-1
+
+tags:
+  - name: Identity
+    description: DID lifecycle management and biometric binding
+  - name: Credentials
+    description: Verifiable Credential issuance, verification, and revocation
+  - name: Marketplace
+    description: Skills listings, engagement, escrow, and reputation
+  - name: Sensors
+    description: IoT device registration and sensor data anchoring
+  - name: FHIR
+    description: Healthcare credential verification via HL7 FHIR R4
+
+paths:
+  # ─── Identity ─────────────────────────────────────────
+  /identity/did:
+    post:
+      tags: [Identity]
+      summary: Create a new DID
+      operationId: createDID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [didString, documentURI]
+              properties:
+                didString:
+                  type: string
+                  example: "did:web:nge.cloud-creations.com:users:alice"
+                documentURI:
+                  type: string
+                  example: "https://nge.cloud-creations.com/did/alice/document.json"
+      responses:
+        '201':
+          description: DID created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  didHash:
+                    type: string
+                  didString:
+                    type: string
+                  documentURI:
+                    type: string
+                  transactionHash:
+                    type: string
+                  blockNumber:
+                    type: integer
+        '400':
+          description: Missing required fields
+
+  /identity/did/{didHash}:
+    get:
+      tags: [Identity]
+      summary: Resolve a DID
+      operationId: resolveDID
+      parameters:
+        - name: didHash
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: DID record
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source:
+                    type: string
+                    enum: [cache, chain]
+                  data:
+                    $ref: '#/components/schemas/DIDRecord'
+    put:
+      tags: [Identity]
+      summary: Update DID document URI
+      operationId: updateDocument
+      parameters:
+        - name: didHash
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newDocumentURI]
+              properties:
+                newDocumentURI:
+                  type: string
+      responses:
+        '200':
+          description: Document updated
+    delete:
+      tags: [Identity]
+      summary: Deactivate a DID
+      operationId: deactivateDID
+      parameters:
+        - name: didHash
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: DID deactivated
+
+  /identity/biometric/bind:
+    post:
+      tags: [Identity]
+      summary: Bind biometric commitment to DID
+      operationId: bindBiometric
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [didHash, biometricCommitment]
+              properties:
+                didHash:
+                  type: string
+                biometricCommitment:
+                  type: string
+                  description: Client-side generated hash of biometric template
+      responses:
+        '200':
+          description: Biometric bound successfully
+
+  /health:
+    get:
+      tags: [Identity]
+      summary: API health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [HEALTHY, INITIALIZING]
+                  module:
+                    type: string
+                  didCount:
+                    type: integer
+                  timestamp:
+                    type: integer
+
+  # ─── Credentials ──────────────────────────────────────
+  /credentials/issue:
+    post:
+      tags: [Credentials]
+      summary: Issue a Verifiable Credential
+      operationId: issueCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueCredentialRequest'
+      responses:
+        '201':
+          description: Credential issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  credentialIdHash:
+                    type: string
+                  credentialHash:
+                    type: string
+                  transactionHash:
+                    type: string
+                  blockNumber:
+                    type: integer
+
+  /credentials/{id}/verify:
+    get:
+      tags: [Credentials]
+      summary: Verify a credential
+      operationId: verifyCredential
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResult'
+
+  /credentials/{id}/revoke:
+    post:
+      tags: [Credentials]
+      summary: Revoke a credential
+      operationId: revokeCredential
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issuerDID]
+              properties:
+                issuerDID:
+                  type: string
+      responses:
+        '200':
+          description: Credential revoked
+
+  /credentials/holder/{didHash}:
+    get:
+      tags: [Credentials]
+      summary: List credentials for a holder
+      operationId: getHolderCredentials
+      parameters:
+        - name: didHash
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Holder's credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source:
+                    type: string
+                  count:
+                    type: integer
+                  credentials:
+                    type: array
+                    items:
+                      type: object
+
+  /credentials/{id}:
+    get:
+      tags: [Credentials]
+      summary: Get credential details
+      operationId: getCredential
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Credential details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Credential'
+
+  # ─── Marketplace ──────────────────────────────────────
+  /marketplace/listings:
+    post:
+      tags: [Marketplace]
+      summary: Create a skill listing
+      operationId: createListing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateListingRequest'
+      responses:
+        '201':
+          description: Listing created
+    get:
+      tags: [Marketplace]
+      summary: Search/browse listings
+      operationId: searchListings
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: Listings list
+
+  /marketplace/listings/{id}:
+    get:
+      tags: [Marketplace]
+      summary: Get listing details
+      operationId: getListing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Listing details
+
+  /marketplace/worker/{did}/reputation:
+    get:
+      tags: [Marketplace]
+      summary: Get worker reputation
+      operationId: getWorkerReputation
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Worker reputation data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workerDID:
+                    type: string
+                  totalRating:
+                    type: integer
+                  ratingCount:
+                    type: integer
+                  averageRating:
+                    type: number
+
+  # ─── Sensors ──────────────────────────────────────────
+  /sensors/register:
+    post:
+      tags: [Sensors]
+      summary: Register an IoT device
+      operationId: registerDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceDID]
+              properties:
+                deviceDID:
+                  type: string
+      responses:
+        '201':
+          description: Device registered
+
+  /sensors/anchor:
+    post:
+      tags: [Sensors]
+      summary: Anchor a sensor data batch
+      operationId: anchorBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnchorBatchRequest'
+      responses:
+        '201':
+          description: Batch anchored
+
+  /sensors/{deviceDID}/batches:
+    get:
+      tags: [Sensors]
+      summary: List batches for a device
+      operationId: getDeviceBatches
+      parameters:
+        - name: deviceDID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Device batches
+
+  /sensors/verify/{batchId}:
+    get:
+      tags: [Sensors]
+      summary: Verify a reading against batch Merkle root
+      operationId: verifyReading
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leaf
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: proof
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Comma-separated Merkle proof nodes
+      responses:
+        '200':
+          description: Verification result
+
+  # ─── FHIR ────────────────────────────────────────────
+  /fhir/credentials/verify:
+    post:
+      tags: [FHIR]
+      summary: Verify healthcare credential via FHIR
+      operationId: verifyFHIRCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FHIRVerifyRequest'
+      responses:
+        '200':
+          description: FHIR verification result
+
+  /fhir/records/anchor:
+    post:
+      tags: [FHIR]
+      summary: Anchor a FHIR bundle hash for provenance
+      operationId: anchorFHIRRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fhirBundle]
+              properties:
+                fhirBundle:
+                  type: object
+                deviceDID:
+                  type: string
+                metadataURI:
+                  type: string
+      responses:
+        '201':
+          description: FHIR record anchored
+
+  /fhir/records/{hash}/verify:
+    get:
+      tags: [FHIR]
+      summary: Verify FHIR record provenance
+      operationId: verifyFHIRRecord
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Record verified
+        '404':
+          description: Record not found
+
+components:
+  schemas:
+    DIDRecord:
+      type: object
+      properties:
+        controller:
+          type: string
+        documentURI:
+          type: string
+        created:
+          type: integer
+        updated:
+          type: integer
+        active:
+          type: boolean
+
+    IssueCredentialRequest:
+      type: object
+      required: [credentialId, issuerDID, holderDID, credentialType]
+      properties:
+        credentialId:
+          type: string
+        issuerDID:
+          type: string
+        holderDID:
+          type: string
+        credentialType:
+          type: integer
+          enum: [0, 1, 2, 3, 4, 5, 6]
+          description: "0=Education, 1=Professional, 2=Skill, 3=Experience, 4=StateID, 5=Healthcare, 6=SensorAttestation"
+        expiresAt:
+          type: integer
+          default: 0
+        metadataURI:
+          type: string
+        vcDocument:
+          type: object
+
+    VerificationResult:
+      type: object
+      properties:
+        credentialId:
+          type: string
+        valid:
+          type: boolean
+        expired:
+          type: boolean
+        revoked:
+          type: boolean
+        trustedIssuer:
+          type: boolean
+        verifiedAt:
+          type: string
+          format: date-time
+
+    Credential:
+      type: object
+      properties:
+        issuerDID:
+          type: string
+        holderDID:
+          type: string
+        credentialHash:
+          type: string
+        credentialType:
+          type: string
+        issuedAt:
+          type: integer
+        expiresAt:
+          type: integer
+        revoked:
+          type: boolean
+        metadataURI:
+          type: string
+
+    CreateListingRequest:
+      type: object
+      required: [workerDID, title]
+      properties:
+        workerDID:
+          type: string
+        title:
+          type: string
+        descriptionURI:
+          type: string
+        credentialIds:
+          type: array
+          items:
+            type: string
+        listingType:
+          type: integer
+          enum: [0, 1, 2]
+          description: "0=GIG, 1=CONTRACT_WORK, 2=PERMANENT"
+        rateWei:
+          type: string
+        isHourly:
+          type: boolean
+
+    AnchorBatchRequest:
+      type: object
+      required: [batchId, deviceDID, merkleRoot]
+      properties:
+        batchId:
+          type: string
+        deviceDID:
+          type: string
+        merkleRoot:
+          type: string
+        readingCount:
+          type: integer
+        startTimestamp:
+          type: integer
+        endTimestamp:
+          type: integer
+        metadataURI:
+          type: string
+
+    FHIRVerifyRequest:
+      type: object
+      required: [npiNumber, holderDID]
+      properties:
+        npiNumber:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        qualificationCode:
+          type: string
+        holderDID:
+          type: string
+        issuerDID:
+          type: string
